@@ -1,0 +1,40 @@
+const express = require("express");
+const router = express.Router();
+const { verifyToken, requireRole } = require("../middleware/authMiddleware");
+const {
+  createItemValidator,
+  updateItemValidator,
+  adjustStockValidator,
+  idParamValidator,
+} = require("../middleware/validators");
+const {
+  createItem,
+  getAllItems,
+  getItemById,
+  updateItem,
+  deleteItem,
+  adjustStock,
+  getLowStockItems,
+  getItemLogs,
+} = require("../controllers/inventoryController");
+
+// All inventory routes require authentication
+router.use(verifyToken);
+
+// Reports (must be above /:id routes to avoid conflicts)
+router.get("/reports/low-stock", getLowStockItems);
+
+// CRUD
+router.get("/", getAllItems);
+router.post("/", requireRole(["admin", "manager"]), createItemValidator, createItem);
+router.get("/:id", idParamValidator, getItemById);
+router.patch("/:id", requireRole(["admin", "manager"]), updateItemValidator, updateItem);
+router.delete("/:id", requireRole("admin"), idParamValidator, deleteItem);
+
+// Stock operations
+router.post("/:id/adjust", requireRole(["admin", "manager", "staff"]), adjustStockValidator, adjustStock);
+
+// Audit logs (admin + manager)
+router.get("/:id/logs", requireRole(["admin", "manager"]), idParamValidator, getItemLogs);
+
+module.exports = router;
