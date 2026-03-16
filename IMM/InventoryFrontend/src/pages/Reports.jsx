@@ -1,19 +1,10 @@
-import { Link, useNavigate } from 'react-router-dom';
 import { 
-  Coffee, LayoutDashboard, Package, Truck, BarChart2, 
-  Settings, LogOut, Search, Bell, Download, TrendingUp, 
+  Download, TrendingUp, Search,
   TrendingDown, Trash2, Layers, Calendar, Filter, ArrowRight,
-  ChevronDown
+  ChevronDown, Coffee
 } from 'lucide-react';
 
 export default function Reports({ setIsAuthenticated }) {
-  const navigate = useNavigate();
-
-  const handleLogout = (e) => {
-    e.preventDefault();
-    setIsAuthenticated(false);
-    navigate('/login');
-  };
   
   // Data para sa Detailed Waste Log table
   const wasteLogs = [
@@ -25,79 +16,7 @@ export default function Reports({ setIsAuthenticated }) {
   ];
 
   return (
-    <div className="flex h-screen bg-[#FBFBFA] font-sans overflow-hidden">
-      
-      {/* ================= SIDEBAR ================= */}
-      <aside className="w-64 bg-[#FBFBFA] border-r border-gray-200 flex flex-col justify-between flex-shrink-0">
-        <div>
-          {/* Brand */}
-          <div className="h-20 flex items-center px-6 gap-3 border-b border-gray-100">
-            <div className="bg-[#3D261D] p-1.5 rounded-lg">
-              <Coffee className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-bold text-xl font-serif text-[#3D261D]">Coffee & Tea</span>
-          </div>
-
-          {/* Navigation - REPORTS IS NOW ACTIVE */}
-          <nav className="p-4 space-y-1">
-            <Link to="/dashboard" className="flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">
-              <LayoutDashboard className="w-5 h-5" /> Dashboard
-            </Link>
-            <Link to="/inventory" className="flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">
-              <Package className="w-5 h-5" /> Inventory
-            </Link>
-            <a href="#" className="flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">
-              <Truck className="w-5 h-5" /> Suppliers
-            </a>
-            <Link to="/reports" className="flex items-center gap-3 px-4 py-3 bg-[#3D261D] text-white rounded-lg font-medium shadow-md">
-              <BarChart2 className="w-5 h-5" /> Reports
-            </Link>
-          </nav>
-        </div>
-
-        {/* Bottom Actions */}
-        <div className="p-4 space-y-1 border-t border-gray-200">
-          <a href="#" className="flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">
-            <Settings className="w-5 h-5" /> Settings
-          </a>
-          {/* UPDATED LOGOUT BUTTON */}
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-lg font-medium transition-colors">
-            <LogOut className="w-5 h-5" /> Logout
-          </button>
-        </div>
-      </aside>
-
-      {/* ================= MAIN CONTENT ================= */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        
-        {/* HEADER */}
-        <header className="h-20 bg-[#FBFBFA] border-b border-gray-200 flex items-center justify-between px-8 flex-shrink-0">
-          <div className="relative w-96">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input 
-              type="text" 
-              placeholder="Search inventory, orders, or suppliers..." 
-              className="w-full bg-white border border-gray-200 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#3D261D]"
-            />
-          </div>
-          <div className="flex items-center gap-6">
-            <button className="relative text-gray-500 hover:text-gray-700">
-              <Bell className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-3 border-l border-gray-200 pl-6">
-              <div className="text-right">
-                <p className="text-sm font-bold text-gray-800">Admin User</p>
-                <p className="text-xs text-gray-500">Store Manager</p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-gray-300 border border-gray-400 overflow-hidden">
-                <img src="https://ui-avatars.com/api/?name=Admin+User&background=3D261D&color=fff" alt="User" />
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* SCROLLABLE REPORTS CONTENT */}
-        <div className="flex-1 overflow-y-auto p-8">
+    <div className="w-full p-8">
           
           {/* Page Header */}
           <div className="flex justify-between items-end mb-8">
@@ -363,8 +282,6 @@ export default function Reports({ setIsAuthenticated }) {
             </p>
           </div>
 
-        </div>
-      </main>
     </div>
   );
 }

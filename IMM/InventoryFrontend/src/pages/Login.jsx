@@ -21,7 +21,7 @@ export default function Login({ setIsAuthenticated }) {
     await new Promise((res) => setTimeout(res, 1500));
     setIsLoading(false);
     
-    if (email !== "staff@coffeetea.com" || password !== "password") {
+    if (email !== "coffeeandtea@gmail.com" || password !== "coffeeandtea123") {
       setError("Invalid credentials. Contact your manager if you need access.");
       return;
     }
