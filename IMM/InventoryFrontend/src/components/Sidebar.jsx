@@ -1,5 +1,6 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Coffee, LayoutDashboard, Package, Truck, BarChart2, Settings, LogOut, ChevronRight } from 'lucide-react';
+import { clearAuthSession } from '../utils/authStorage';
 
 const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -14,6 +15,7 @@ export default function Sidebar({ setIsAuthenticated, collapsed, setCollapsed })
 
     const handleLogout = (e) => {
         e.preventDefault();
+        clearAuthSession();
         setIsAuthenticated(false);
         navigate('/login');
     };

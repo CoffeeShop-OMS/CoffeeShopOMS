@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom'; /* <-- BAGONG IMPORT PARA LUMIPAT NG PAGE */
 import { Coffee, Mail, Lock, Eye, EyeOff, ArrowRight, Leaf, Bean } from 'lucide-react';
+import { saveAuthSession } from '../utils/authStorage';
 
 /* esl/* <-- Para hindi magalit ang ESLint */
 export default function Login({ setIsAuthenticated }) {
   const navigate = useNavigate(); /* <-- TINAWAG NATIN ANG TAGA-LIPAT NG PAGE */
+  const apiBaseUrl = (
+    import.meta.env.VITE_BACKEND_BASE_URL ||
+    "http://localhost:5000"
+  ).replace(/\/$/, "");
+  const authApiBaseUrl = apiBaseUrl.endsWith("/api") ? apiBaseUrl : `${apiBaseUrl}/api`;
   
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,17 +24,45 @@ export default function Login({ setIsAuthenticated }) {
     setError("");
     if (!email || !password) { setError("Please fill in all fields."); return; }
     setIsLoading(true);
-    await new Promise((res) => setTimeout(res, 1500));
-    setIsLoading(false);
-    
-    if (email !== "coffeeandtea@gmail.com" || password !== "coffeeandtea123") {
-      setError("Invalid credentials. Contact your manager if you need access.");
-      return;
+
+    try {
+      const response = await fetch(`${authApiBaseUrl}/auth/admin/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        setError(result.message || "Login failed. Please try again.");
+        return;
+      }
+      if (!result?.data?.token) {
+        setError("Login failed: session token not provided by server.");
+        return;
+      }
+
+      saveAuthSession(
+        {
+          email: result?.data?.email || email,
+          role: result?.data?.role || "admin",
+          token: result?.data?.token,
+          loggedInAt: new Date().toISOString(),
+        },
+        rememberMe
+      );
+
+      // --- KAPAG TAMA ANG LOGIN, ITO ANG MANGYAYARI ---
+      setIsAuthenticated(true); // 1. Bubuksan ang lock sa App.jsx
+      navigate('/dashboard');   // 2. Lilipat na ang page sa Dashboard!
+    } catch (err) {
+      setError("Cannot connect to server. Please check backend connection.");
+    } finally {
+      setIsLoading(false);
     }
-    
-    // --- KAPAG TAMA ANG LOGIN, ITO ANG MANGYAYARI ---
-    setIsAuthenticated(true); // 1. Bubuksan ang lock sa App.jsx
-    navigate('/dashboard');   // 2. Lilipat na ang page sa Dashboard!
   };
 
   return (

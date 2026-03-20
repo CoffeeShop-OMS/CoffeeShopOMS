@@ -1,7 +1,7 @@
 import { 
   Plus, Download, Package,
   AlertTriangle, TrendingDown, RefreshCcw, Filter, 
-  List, LayoutGrid, MoreHorizontal, Droplet, CupSoda, Cookie, Beaker, Coffee, Search
+  List, LayoutGrid, Droplet, CupSoda, Cookie, Beaker, Coffee, Search
 } from 'lucide-react';
 
 export default function Inventory({ setIsAuthenticated }) {
@@ -128,7 +128,6 @@ export default function Inventory({ setIsAuthenticated }) {
                   <th className="p-4">Category</th>
                   <th className="p-4">Current Stock</th>
                   <th className="p-4">Reorder Level</th>
-                  <th className="p-4">Supplier</th>
                   <th className="p-4">Last Order</th>
                   <th className="p-4 text-center">Actions</th>
                 </tr>
@@ -144,25 +143,13 @@ export default function Inventory({ setIsAuthenticated }) {
                     </td>
                     
                     <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-                          <img src={item.img} alt={item.name} className="w-full h-full object-cover" />
-                        </div>
-                        <div>
-                          <p className="font-bold text-gray-900">{item.name}</p>
-                          <p className="text-[11px] text-gray-400">{item.id}</p>
-                        </div>
+                      <div>
+                        <p className="font-bold text-gray-900">{item.name}</p>
+                        <p className="text-[11px] text-gray-400">{item.id}</p>
                       </div>
                     </td>
 
-                    <td className="p-4">
-                      <div className="flex items-center gap-2 text-gray-600">
-                        <div className="p-1.5 bg-gray-100 rounded-md">
-                          <item.catIcon className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="text-xs font-medium">{item.cat}</span>
-                      </div>
-                    </td>
+                    <td className="p-4 text-gray-600 text-xs font-medium">{item.cat}</td>
 
                     <td className="p-4">
                       <div className="flex items-center gap-2">
@@ -183,18 +170,12 @@ export default function Inventory({ setIsAuthenticated }) {
                       {item.reorder}
                     </td>
 
-                    <td className="p-4 text-gray-600 text-xs">
-                      <p className="w-20 truncate" title={item.supplier}>{item.supplier}</p>
-                    </td>
-
                     <td className="p-4 text-gray-500 text-xs">
                       {item.date}
                     </td>
 
                     <td className="p-4 text-center">
-                      <button className="text-gray-400 hover:text-gray-800">
-                        <MoreHorizontal className="w-5 h-5" />
-                      </button>
+                      <button className="text-xs font-medium text-gray-500 hover:text-gray-800">View</button>
                     </td>
                   </tr>
                 ))}
