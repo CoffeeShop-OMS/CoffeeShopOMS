@@ -72,4 +72,20 @@ export const createInventoryItem = (token, payload) =>
     body: JSON.stringify(payload),
   });
 
+export const updateInventoryItem = (token, itemId, payload) =>
+  request(`/inventory/${itemId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader(token),
+    },
+    body: JSON.stringify(payload),
+  });
+
+export const deleteInventoryItem = (token, itemId) =>
+  request(`/inventory/${itemId}`, {
+    method: "DELETE",
+    headers: authHeader(token),
+  });
+
 export { apiRoot };

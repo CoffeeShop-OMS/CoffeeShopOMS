@@ -55,7 +55,7 @@ export default function Dashboard({ setIsAuthenticated }) {
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Current Value (USD)</p>
-                <p className="text-2xl font-bold font-serif text-gray-900">$24,580.00</p>
+                <p className="text-2xl font-bold font-serif text-gray-900">₱24,580.00</p>
               </div>
             </div>
 

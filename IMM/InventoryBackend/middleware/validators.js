@@ -53,9 +53,8 @@ const createItemValidator = [
     .isLength({ max: 100 })
     .withMessage("Item name too long"),
   body("sku")
+    .optional({ values: "falsy" })
     .trim()
-    .notEmpty()
-    .withMessage("SKU is required")
     .isAlphanumeric()
     .withMessage("SKU must be alphanumeric"),
   body("category")

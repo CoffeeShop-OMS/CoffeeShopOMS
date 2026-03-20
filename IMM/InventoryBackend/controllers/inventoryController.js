@@ -4,8 +4,49 @@ const { FieldValue } = require("firebase-admin/firestore");
 const COLLECTION = "inventory";
 const LOG_COLLECTION = "inventoryLogs";
 
+// Category mapping: UI format to backend lowercase format
+const categoryToBackend = {
+  'Beans': 'beans',
+  'Milk': 'milk',
+  'Syrup': 'syrup',
+  'Cups': 'packaging',
+  'Pastries': 'other',
+  'Equipment': 'equipment',
+  'Other': 'other',
+};
+
+const sanitizeSku = (value = "") =>
+  String(value)
+    .trim()
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+
+const generateSku = (name = "ITEM", suffix = Date.now().toString().slice(-6)) => {
+  const prefix =
+    String(name)
+      .trim()
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toUpperCase()
+      .slice(0, 6) || "ITEM";
+
+  return `${prefix}${suffix}`;
+};
+
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
+const toClientErrorMessage = (error, fallbackMessage) => {
+  const raw = String(error?.message || "").toLowerCase();
+  const isCredentialsIssue =
+    raw.includes("unable to detect a project id") ||
+    raw.includes("could not load the default credentials") ||
+    raw.includes("invalid grant");
+
+  if (isCredentialsIssue) {
+    return "Firestore credentials are not configured in backend. Check InventoryBackend/.env Firebase Admin settings.";
+  }
+
+  return fallbackMessage;
+};
 const logActivity = async (action, itemId, itemName, userId, details = {}) => {
   await db.collection(LOG_COLLECTION).add({
     action,        // "CREATE" | "UPDATE" | "DELETE" | "STOCK_ADJUST"
@@ -26,22 +67,47 @@ const createItem = async (req, res) => {
   try {
     const { name, sku, category, quantity, unit, lowStockThreshold = 10, costPrice, supplier } = req.body;
 
-    // Check for duplicate SKU
-    const skuCheck = await db.collection(COLLECTION).where("sku", "==", sku.toUpperCase()).get();
-    if (!skuCheck.empty) {
-      return res.status(409).json({ success: false, message: `SKU '${sku}' already exists` });
+    const quantityInt = parseInt(quantity);
+    const thresholdInt = parseInt(lowStockThreshold);
+    const cleanName = String(name).trim();
+    const cleanCategory = categoryToBackend[category] || category.toLowerCase(); // Convert UI category to backend format
+    const cleanUnit = String(unit).trim();
+    const cleanSupplier = supplier ? String(supplier).trim() : null;
+
+    let finalSku = sanitizeSku(sku) || generateSku(cleanName);
+
+    // Ensure SKU uniqueness when auto-generating or when a custom SKU collides.
+    let attempts = 0;
+    while (attempts < 5) {
+      const skuCheck = await db.collection(COLLECTION).where("sku", "==", finalSku).limit(1).get();
+      if (skuCheck.empty) break;
+
+      if (sku) {
+        return res.status(409).json({ success: false, message: `SKU '${finalSku}' already exists` });
+      }
+
+      attempts += 1;
+      const randomSuffix = `${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
+      finalSku = generateSku(cleanName, randomSuffix);
+    }
+
+    if (attempts >= 5) {
+      return res.status(500).json({
+        success: false,
+        message: "Unable to generate a unique SKU. Please try again.",
+      });
     }
 
     const newItem = {
-      name,
-      sku: sku.toUpperCase(),
-      category,
-      quantity: parseInt(quantity),
-      unit,
-      lowStockThreshold: parseInt(lowStockThreshold),
+      name: cleanName,
+      sku: finalSku,
+      category: cleanCategory,
+      quantity: quantityInt,
+      unit: cleanUnit,
+      lowStockThreshold: thresholdInt,
       costPrice: costPrice ? parseFloat(costPrice) : null,
-      supplier: supplier || null,
-      isLowStock: parseInt(quantity) <= parseInt(lowStockThreshold),
+      supplier: cleanSupplier,
+      isLowStock: quantityInt <= thresholdInt,
       status: "active",
       createdBy: req.user.uid,
       updatedBy: req.user.uid,
@@ -51,7 +117,7 @@ const createItem = async (req, res) => {
 
     const docRef = await db.collection(COLLECTION).add(newItem);
 
-    await logActivity("CREATE", docRef.id, name, req.user.uid, { quantity, sku });
+    await logActivity("CREATE", docRef.id, cleanName, req.user.uid, { quantity: quantityInt, sku: finalSku });
 
     res.status(201).json({
       success: true,
@@ -60,7 +126,7 @@ const createItem = async (req, res) => {
     });
   } catch (error) {
     console.error("createItem error:", error);
-    res.status(500).json({ success: false, message: "Failed to create item" });
+    res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to create item") });
   }
 };
 
@@ -114,7 +180,7 @@ const getAllItems = async (req, res) => {
     });
   } catch (error) {
     console.error("getAllItems error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch inventory" });
+    res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to fetch inventory") });
   }
 };
 
@@ -134,7 +200,7 @@ const getItemById = async (req, res) => {
     res.json({ success: true, data: { id: doc.id, ...doc.data() } });
   } catch (error) {
     console.error("getItemById error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch item" });
+    res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to fetch item") });
   }
 };
 
@@ -158,7 +224,7 @@ const updateItem = async (req, res) => {
     const updates = { updatedBy: req.user.uid, updatedAt: FieldValue.serverTimestamp() };
 
     if (name !== undefined) updates.name = name;
-    if (category !== undefined) updates.category = category;
+    if (category !== undefined) updates.category = categoryToBackend[category] || category.toLowerCase(); // Convert UI category to backend format
     if (unit !== undefined) updates.unit = unit;
     if (supplier !== undefined) updates.supplier = supplier;
     if (costPrice !== undefined) updates.costPrice = parseFloat(costPrice);
@@ -178,7 +244,7 @@ const updateItem = async (req, res) => {
     res.json({ success: true, message: "Item updated successfully", data: { id: req.params.id, ...updates } });
   } catch (error) {
     console.error("updateItem error:", error);
-    res.status(500).json({ success: false, message: "Failed to update item" });
+    res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to update item") });
   }
 };
 
@@ -207,7 +273,7 @@ const deleteItem = async (req, res) => {
     res.json({ success: true, message: "Item deleted successfully" });
   } catch (error) {
     console.error("deleteItem error:", error);
-    res.status(500).json({ success: false, message: "Failed to delete item" });
+    res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to delete item") });
   }
 };
 
@@ -268,7 +334,7 @@ const adjustStock = async (req, res) => {
     if (error.code === 404) return res.status(404).json({ success: false, message: error.message });
     if (error.code === 400) return res.status(400).json({ success: false, message: error.message });
     console.error("adjustStock error:", error);
-    res.status(500).json({ success: false, message: "Failed to adjust stock" });
+    res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to adjust stock") });
   }
 };
 
@@ -299,7 +365,7 @@ const getLowStockItems = async (req, res) => {
     res.json({ success: true, data: items, count: items.length });
   } catch (error) {
     console.error("getLowStockItems error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch low stock report" });
+    res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to fetch low stock report") });
   }
 };
 
@@ -321,7 +387,7 @@ const getItemLogs = async (req, res) => {
     res.json({ success: true, data: logs });
   } catch (error) {
     console.error("getItemLogs error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch logs" });
+    res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to fetch logs") });
   }
 };
 

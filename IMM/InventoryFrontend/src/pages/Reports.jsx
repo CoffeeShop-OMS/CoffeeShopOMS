@@ -8,11 +8,11 @@ export default function Reports({ setIsAuthenticated }) {
   
   // Data para sa Detailed Waste Log table
   const wasteLogs = [
-    { id: 1, name: 'Ethiopian Yirgacheffe', cat: 'Beans', reason: 'Expired', isExpired: true, cost: '$85.00', date: '2023-10-24' },
-    { id: 2, name: 'Whole Milk', cat: 'Dairy', reason: 'Spilled', isExpired: false, cost: '$24.00', date: '2023-10-23' },
-    { id: 3, name: 'Butter Croissants', cat: 'Pastries', reason: 'Defective', isExpired: false, cost: '$16.40', date: '2023-10-22' },
-    { id: 4, name: 'Oat Milk', cat: 'Dairy', reason: 'Expired', isExpired: true, cost: '$14.00', date: '2023-10-21' },
-    { id: 5, name: 'Paper Cups (12oz)', cat: 'Packaging', reason: 'Damaged', isExpired: false, cost: '$5.50', date: '2023-10-20' },
+    { id: 1, name: 'Ethiopian Yirgacheffe', cat: 'Beans', reason: 'Expired', isExpired: true, cost: '₱85.00', date: '2023-10-24' },
+    { id: 2, name: 'Whole Milk', cat: 'Dairy', reason: 'Spilled', isExpired: false, cost: '₱24.00', date: '2023-10-23' },
+    { id: 3, name: 'Butter Croissants', cat: 'Pastries', reason: 'Defective', isExpired: false, cost: '₱16.40', date: '2023-10-22' },
+    { id: 4, name: 'Oat Milk', cat: 'Dairy', reason: 'Expired', isExpired: true, cost: '₱14.00', date: '2023-10-21' },
+    { id: 5, name: 'Paper Cups (12oz)', cat: 'Packaging', reason: 'Damaged', isExpired: false, cost: '₱5.50', date: '2023-10-20' },
   ];
 
   return (
@@ -83,7 +83,7 @@ export default function Reports({ setIsAuthenticated }) {
                 </div>
               </div>
               <div>
-                <p className="text-3xl font-bold font-serif text-gray-900 mb-3">$14,280</p>
+                <p className="text-3xl font-bold font-serif text-gray-900 mb-3">₱14,280</p>
                 <div className="flex items-center gap-2">
                   <span className="flex items-center gap-1 text-[11px] font-bold text-gray-800 bg-gray-100 px-2 py-0.5 rounded-md">
                     <TrendingUp className="w-3 h-3" /> +3.2%
@@ -113,7 +113,7 @@ export default function Reports({ setIsAuthenticated }) {
               <div className="h-56 w-full relative">
                 {/* Y-Axis labels */}
                 <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-[10px] text-gray-400 pb-6">
-                  <span>$6000</span><span>$4500</span><span>$3000</span><span>$1500</span><span>$0</span>
+                  <span>₱6000</span><span>₱4500</span><span>₱3000</span><span>₱1500</span><span>₱0</span>
                 </div>
                 {/* X-Axis labels */}
                 <div className="absolute bottom-0 left-10 right-0 flex justify-between text-[10px] text-gray-400">

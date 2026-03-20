@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Coffee, LayoutDashboard, Package, Truck, BarChart2, Settings, LogOut, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Package, Truck, BarChart2, Settings, LogOut, ChevronRight } from 'lucide-react';
 import { clearAuthSession } from '../utils/authStorage';
 
 const navItems = [
@@ -35,8 +35,8 @@ export default function Sidebar({ setIsAuthenticated, collapsed, setCollapsed })
             <div>
                 {/* Brand */}
                 <div className="h-16 flex items-center px-3 gap-2 border-b border-gray-100 overflow-hidden">
-                    <div className="flex-shrink-0 bg-[#3D261D] p-1.5 rounded-lg">
-                        <Coffee className="w-4 h-4 text-amber-400" />
+                    <div className="flex-shrink-0 p-1.5 rounded-lg">
+                        <img src="/Logo.png" alt="Coffee & Tea" className="w-6 h-6 object-contain" />
                     </div>
                     {!collapsed && (
                         <span className="flex-1 font-semibold text-[15px] text-[#3D261D] tracking-tight whitespace-nowrap">

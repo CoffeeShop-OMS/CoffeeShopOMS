@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom'; /* <-- BAGONG IMPORT PARA LUMIPAT NG PAGE */
-import { Coffee, Mail, Lock, Eye, EyeOff, ArrowRight, Leaf, Bean } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Leaf, Bean , Coffee} from 'lucide-react';
 import { saveAuthSession } from '../utils/authStorage';
 import { adminLogin } from '../services/api';
 
@@ -54,14 +54,6 @@ export default function Login({ setIsAuthenticated }) {
       {/* LEFT SIDE - LOGIN FORM */}
       <div className="w-full md:w-1/2 h-full flex flex-col justify-center items-center bg-[#FBFBFA] p-8">
         <div className="w-full max-w-[400px]">
-          {/* Logo & Header */}
-          <div className="flex items-center gap-3 mb-8">
-            <div className="p-2 rounded-lg" style={{ backgroundColor: '#3D261D' }}>
-              <Coffee className="w-6 h-6 text-white" />
-            </div>
-            <span className="font-bold text-2xl font-serif" style={{ color: '#3D261D' }}>Coffee & Tea</span>
-          </div>
-
           <h1 className="text-4xl font-bold text-[#332926] mb-2 font-serif tracking-tight">Welcome Back</h1>
           <p className="text-gray-500 text-base mb-8">Sign in to manage your inventory</p>
 
@@ -168,8 +160,8 @@ export default function Login({ setIsAuthenticated }) {
         <Bean className="absolute bottom-20 left-20 w-32 h-32 text-white/5 -rotate-45" />
 
         <div className="relative z-10 flex flex-col items-center max-w-md">
-          <div className="w-24 h-24 bg-white/10 rounded-full flex items-center justify-center mb-6 backdrop-blur-sm">
-            <Coffee className="w-10 h-10 text-white" />
+          <div className="w-80 h-80 bg-white/10 rounded-full flex items-center justify-center mb-8 backdrop-blur-sm">
+            <img src="/Logo.png" alt="Coffee Shop" className="w-72 h-72 object-contain" />
           </div>
           <h2 className="text-4xl font-bold mb-4 font-serif">Coffee & Tea</h2>
           <p className="text-white/80 mb-8 leading-relaxed text-lg">
