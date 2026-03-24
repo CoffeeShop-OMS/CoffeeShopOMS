@@ -55,6 +55,13 @@ export default function Dashboard({ setIsAuthenticated }) {
 
   const formattedDate = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
+  const getTimeBasedGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return 'Good Morning';
+    if (hour >= 12 && hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  };
+
   return (
     <div className="w-full p-8 bg-[#F7F4F0]">
           
@@ -66,7 +73,7 @@ export default function Dashboard({ setIsAuthenticated }) {
                   className="text-xl sm:text-2xl font-bold text-[#1C100A] tracking-tight"
                   style={{ fontFamily: "serif" }}
                 >
-                  Morning, Arabica Manager
+                  {getTimeBasedGreeting()}, Manager
                 </h1>
                 <p className="text-xs text-[#9E8A7A] mt-0.5 hidden sm:block">Your inventory health is <span className="font-semibold text-gray-700">92%</span>. 4 items need your attention.</p>
               </div>

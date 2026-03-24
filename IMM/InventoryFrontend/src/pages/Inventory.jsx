@@ -69,7 +69,7 @@ const inputCls = 'w-full border border-[#E2DDD8] rounded-xl px-3.5 py-2.5 text-s
 
 const exportToCSV = (items) => {
   if (items.length === 0) {
-    alert('No items to export');
+    toast.info('No items to export');
     return;
   }
   
