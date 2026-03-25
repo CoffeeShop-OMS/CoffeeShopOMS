@@ -213,14 +213,14 @@ export default function Inventory() {
       setInventoryItems((prev) => prev.filter((item) => item.id !== itemToDelete.id));
       setShowDeleteModal(false);
       setItemToDelete(null);
-      toast.success('Item deleted successfully');
+      toast.success('Item archived successfully');
     } catch (error) { toast.error(error?.message || 'Cannot connect to backend. Please check server connection.'); }
   };
 
   const handleBulkDelete = async () => {
     if (selectedItems.size === 0) return;
-    if (!window.confirm(`Delete ${selectedItems.size} item(s)? This cannot be undone.`)) return;
-    
+    if (!window.confirm(`Archive ${selectedItems.size} item(s)? These items will be hidden from inventory.`)) return;
+
     const session = getAuthSession();
     if (!session?.token) { toast.error('Session expired. Please login again.'); return; }
     setIsBulkDeleting(true);
@@ -230,8 +230,8 @@ export default function Inventory() {
       setInventoryItems((prev) => prev.filter((item) => !selectedItems.has(item.id)));
       setSelectedItems(new Set());
       setCurrentPage(1);
-      toast.success(`${itemIds.length} item(s) deleted successfully`);
-    } catch (error) { toast.error(error?.message || 'Failed to delete items'); }
+      toast.success(`${itemIds.length} item(s) archived successfully`);
+    } catch (error) { toast.error(error?.message || 'Failed to archive items'); }
     finally { setIsBulkDeleting(false); }
   };
 
@@ -364,9 +364,9 @@ export default function Inventory() {
                 <button
                   onClick={handleBulkDelete}
                   disabled={isBulkDeleting}
-                  className="flex items-center gap-1.5 px-3 py-2 border border-red-200 rounded-xl bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2 border border-amber-200 rounded-xl bg-amber-50 text-amber-600 text-sm font-medium hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
-                  <span>Delete {selectedItems.size}</span>
+                  <span>Archive {selectedItems.size}</span>
                 </button>
               )}
               {/* Filter toggle — shown on mobile, hidden on md+ */}

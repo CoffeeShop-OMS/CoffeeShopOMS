@@ -75,7 +75,7 @@ export default function InventoryMobileList({
               {/* Row 4: actions */}
               <div className="flex gap-2 justify-center">
                 <button onClick={() => onUpdate(item)} className="py-1.5 px-6 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all">Update</button>
-                <button onClick={() => onDelete(item)} className="py-1.5 px-6 text-xs font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all">Delete</button>
+                <button onClick={() => onDelete(item)} className="py-1.5 px-6 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all">Archive</button>
               </div>
             </div>
           );

@@ -113,7 +113,7 @@ export default function InventoryTable({
                   <td className="px-4 py-3.5">
                     <div className="flex gap-1.5 justify-center">
                       <button onClick={() => onUpdate(item)} className="px-3 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all duration-150">Update</button>
-                      <button onClick={() => onDelete(item)} className="px-3 py-1.5 text-[11px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all duration-150">Delete</button>
+                      <button onClick={() => onDelete(item)} className="px-3 py-1.5 text-[11px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all duration-150">Archive</button>
                     </div>
                   </td>
                 </tr>
