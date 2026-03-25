@@ -104,7 +104,7 @@ export default function ItemDrawer({
                 <Dropdown
                   value={item.category}
                   onChange={(val) => setItem((p) => ({ ...p, category: val }))}
-                  options={['Beans', 'Milk', 'Syrup', 'Cups', 'Pastries', 'Powder']}
+                  options={['Beans', 'Milk', 'Syrup', 'Cups', 'Pastries', 'Equipment', 'Add-ins', 'Powder', 'Other']}
                   placeholder="Select category"
                 />
               </div>

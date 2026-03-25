@@ -61,7 +61,7 @@ const createItemValidator = [
     .trim()
     .notEmpty()
     .withMessage("Category is required")
-    .isIn(["beans", "milk", "syrup", "packaging", "equipment", "other"])
+    .isIn(["beans", "milk", "syrup", "packaging", "equipment", "add-ins", "powder", "other"])
     .withMessage("Invalid category"),
   body("quantity")
     .isInt({ min: 0 })
@@ -87,7 +87,7 @@ const updateItemValidator = [
   body("name").optional().trim().isLength({ max: 100 }),
   body("category")
     .optional()
-    .isIn(["beans", "milk", "syrup", "packaging", "equipment", "other"]),
+    .isIn(["beans", "milk", "syrup", "packaging", "equipment", "add-ins", "powder", "other"]),
   body("quantity").optional().isInt({ min: 0 }),
   body("unit").optional().trim().notEmpty(),
   body("lowStockThreshold").optional().isInt({ min: 0 }),

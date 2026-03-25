@@ -19,17 +19,19 @@ const categoryColors = {
   Cups:      { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-400', border: 'border-emerald-200' },
   Pastries:  { bg: 'bg-rose-50',    text: 'text-rose-700',    dot: 'bg-rose-400',    border: 'border-rose-200' },
   Equipment: { bg: 'bg-stone-50',   text: 'text-stone-600',   dot: 'bg-stone-400',   border: 'border-stone-200' },
+  'Add-ins': { bg: 'bg-orange-50',  text: 'text-orange-700',  dot: 'bg-orange-400',  border: 'border-orange-200' },
+  Powder:    { bg: 'bg-yellow-50',  text: 'text-yellow-700',  dot: 'bg-yellow-400',  border: 'border-yellow-200' },
   Other:     { bg: 'bg-stone-50',   text: 'text-stone-600',   dot: 'bg-stone-400',   border: 'border-stone-200' },
 };
 
 const categoryToBackend = {
   Beans: 'beans', Milk: 'milk', Syrup: 'syrup',
-  Cups: 'packaging', Pastries: 'other', Equipment: 'equipment', Other: 'other',
+  Cups: 'packaging', Pastries: 'other', Equipment: 'equipment', 'Add-ins': 'add-ins', Powder: 'powder', Other: 'other',
 };
 
 const categoryFromBackend = {
   beans: 'Beans', milk: 'Milk', syrup: 'Syrup',
-  packaging: 'Cups', equipment: 'Equipment', other: 'Other',
+  packaging: 'Cups', equipment: 'Equipment', 'add-ins': 'Add-ins', powder: 'Powder', other: 'Other',
 };
 
 const formatFirestoreDate = (value) => {
@@ -382,7 +384,7 @@ export default function Inventory() {
                   <Dropdown
                     value={categoryFilter}
                     onChange={setCategoryFilter}
-                    options={['All','Beans','Milk','Syrup','Cups','Pastries','Equipment','Other']}
+                    options={['All','Beans','Milk','Syrup','Cups','Pastries','Equipment','Add-ins','Powder','Other']}
                     placeholder="Select category"
                     className="text-sm font-semibold text-[#3D261D]"
                   />
@@ -397,7 +399,7 @@ export default function Inventory() {
               <Dropdown
                 value={categoryFilter}
                 onChange={setCategoryFilter}
-                options={['All','Beans','Milk','Syrup','Cups','Pastries','Equipment','Other']}
+                options={['All','Beans','Milk','Syrup','Cups','Pastries','Equipment','Add-ins','Powder','Other']}
                 placeholder="Select category"
               />
             </div>

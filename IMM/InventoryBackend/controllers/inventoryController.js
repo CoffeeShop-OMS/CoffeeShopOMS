@@ -12,6 +12,8 @@ const categoryToBackend = {
   'Cups': 'packaging',
   'Pastries': 'other',
   'Equipment': 'equipment',
+  'Add-ins': 'add-ins',
+  'Powder': 'powder',
   'Other': 'other',
 };
 
