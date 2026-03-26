@@ -244,7 +244,7 @@ const updateItem = async (req, res) => {
     await docRef.update(updates);
     await logActivity("UPDATE", req.params.id, current.name, req.user.uid, updates);
 
-    res.json({ success: true, message: "Item updated successfully", data: { id: req.params.id, ...updates } });
+    res.json({ success: true, message: "Item updated successfully", data: { id: req.params.id, ...current, ...updates } });
   } catch (error) {
     console.error("updateItem error:", error);
     res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to update item") });

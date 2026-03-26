@@ -300,15 +300,15 @@ export default function Inventory() {
     return;
   }
 
-  // Check for duplicate item names (case-insensitive) when adding new items
+  // Check for duplicate item names (case-insensitive) in the same category when adding new items
   if (drawerMode === 'add') {
     const normalizedNewName = normalizeNameForComparison(itemName);
     const duplicateItem = inventoryItems.find(
-      (item) => normalizeNameForComparison(item.name) === normalizedNewName
+      (item) => normalizeNameForComparison(item.name) === normalizedNewName && item.cat === newItem.category
     );
 
     if (duplicateItem) {
-      toast.error(`Item '${duplicateItem.name}' already exists with SKU '${duplicateItem.sku}'. Please update it instead or use a different name.`);
+      toast.error(`Item '${duplicateItem.name}' already exists in the ${newItem.category} category with SKU '${duplicateItem.sku}'. Please update it instead or use a different name.`);
       return;
     }
   }
