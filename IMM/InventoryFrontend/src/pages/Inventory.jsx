@@ -54,7 +54,7 @@ const mapItemToUi = (item) => {
   const costPrice = Number(item.costPrice || 0);
   const unit      = item.unit || '';
   return {
-    id: item.id, name: item.name,
+    id: item.id, name: item.name, sku: item.sku || '',
     cat: categoryFromBackend[item.category] || 'Other',
     stock: quantity > 0 ? `${quantity} ${unit}`.trim() : '0',
     status: isOut ? 'Out of Stock' : isLow ? 'Low Stock' : 'Healthy',
@@ -74,11 +74,11 @@ const exportToCSV = (items) => {
     toast.info('No items to export');
     return;
   }
-  
-  const headers = ['Item ID', 'Item Name', 'Category', 'Stock', 'Reorder Level', 'Unit Cost', 'Current Value', 'Max Value', 'Status', 'Last Updated'];
+
+  const headers = ['Item Name', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Unit Cost', 'Current Value', 'Max Value', 'Status', 'Last Updated'];
   const rows = items.map((item) => [
-    item.id,
     item.name,
+    item.sku,
     item.cat,
     item.quantity,
     item.threshold,
@@ -122,14 +122,23 @@ export default function Inventory() {
   const [isBulkDeleting,  setIsBulkDeleting]  = useState(false);
   const itemsPerPage = 10;
   const [newItem, setNewItem] = useState({
-    itemName: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '',
+    itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '',
   });
+
+  // Helper function to normalize item names for comparison
+  const normalizeNameForComparison = (name) => {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/[^\w\s]/g, '');
+  };
 
   const filteredItems = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return inventoryItems.filter((item) => {
       const matchCat    = categoryFilter === 'All' || item.cat === categoryFilter;
-      const matchSearch = !term || item.name.toLowerCase().includes(term) || item.id.toLowerCase().includes(term);
+      const matchSearch = !term || item.name.toLowerCase().includes(term) || item.sku.toLowerCase().includes(term);
       return matchCat && matchSearch;
     });
   }, [inventoryItems, searchTerm, categoryFilter]);
@@ -174,12 +183,12 @@ export default function Inventory() {
     setIsDrawerOpen(false);
     setDrawerMode('add');
     setFormError('');
-    setNewItem({ itemName: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '' });
+    setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '' });
   };
 
   const handleAddClick = () => {
     setDrawerMode('add');
-    setNewItem({ itemName: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '' });
+    setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '' });
     setFormError('');
     setIsDrawerOpen(true);
   };
@@ -188,6 +197,7 @@ export default function Inventory() {
     setDrawerMode('edit');
     setNewItem({
       id: item.id,
+      sku: item.sku,
       itemName: item.name,
       category: item.cat,
       unit: item.stock.split(' ')[1] || 'pcs',
@@ -290,6 +300,19 @@ export default function Inventory() {
     return;
   }
 
+  // Check for duplicate item names (case-insensitive) when adding new items
+  if (drawerMode === 'add') {
+    const normalizedNewName = normalizeNameForComparison(itemName);
+    const duplicateItem = inventoryItems.find(
+      (item) => normalizeNameForComparison(item.name) === normalizedNewName
+    );
+
+    if (duplicateItem) {
+      toast.error(`Item '${duplicateItem.name}' already exists with SKU '${duplicateItem.sku}'. Please update it instead or use a different name.`);
+      return;
+    }
+  }
+
   try {
     if (drawerMode === 'add') {
       // Generate SKU for new items
@@ -329,7 +352,11 @@ export default function Inventory() {
 
     closeDrawer();
   } catch (error) {
-    toast.error(error?.message || 'Cannot connect to backend. Please check server connection.');
+    if (error?.response?.status === 409) {
+      toast.error(`Item with SKU '${error?.response?.data?.message?.match(/SKU '([^']+)'/)?.[1] || 'unknown'}' already exists`);
+    } else {
+      toast.error(error?.message || 'Cannot connect to backend. Please check server connection.');
+    }
   }
 };
 

@@ -58,6 +58,28 @@ export default function ItemDrawer({
           </div>
 
           <div className="flex-1 overflow-y-auto px-5 sm:px-7 py-5 sm:py-6 flex flex-col gap-4 sm:gap-5">
+            {isEditMode && (
+              <div>
+                <label className="block text-[11px] font-bold text-[#7A6355] uppercase tracking-widest mb-2">SKU</label>
+                <input
+                  type="text"
+                  value={item.sku || ''}
+                  disabled={true}
+                  className="w-full border border-[#E2DDD8] rounded-xl px-3.5 py-2.5 text-sm text-[#2C1810] bg-[#FAF8F5] transition cursor-not-allowed placeholder:text-[#C4B8B0]"
+                />
+              </div>
+            )}
+            {!isEditMode && (
+              <div>
+                <label className="block text-[11px] font-bold text-[#7A6355] uppercase tracking-widest mb-2">SKU</label>
+                <input
+                  type="text"
+                  value="Auto-generated"
+                  disabled={true}
+                  className="w-full border border-[#E2DDD8] rounded-xl px-3.5 py-2.5 text-sm text-[#9E8A7A] bg-[#FAF8F5] transition cursor-not-allowed placeholder:text-[#C4B8B0]"
+                />
+              </div>
+            )}
             {fields.map(({ label, field, type, placeholder }) => (
               <div key={field}>
                 <label className="block text-[11px] font-bold text-[#7A6355] uppercase tracking-widest mb-2">{label}</label>
@@ -70,11 +92,11 @@ export default function ItemDrawer({
                   value={item[field]}
                   onChange={(e) => {
                     let value = e.target.value;
-                    
+
                     if (type === 'number') {
                       // Allow only numbers and decimal point
                       value = value.replace(/[^0-9.]/g, '');
-                      
+
                       // For cost, allow up to 2 decimals
                       if (field === 'costPerUnit') {
                         const parts = value.split('.');
@@ -88,7 +110,7 @@ export default function ItemDrawer({
                         value = value.replace(/\./g, '');
                       }
                     }
-                    
+
                     setItem((p) => ({ ...p, [field]: value }));
                   }}
                   className={inputCls}

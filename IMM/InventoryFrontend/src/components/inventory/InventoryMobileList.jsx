@@ -34,7 +34,7 @@ export default function InventoryMobileList({
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-[#1C100A] truncate">{item.name}</p>
-                  <p className="text-[11px] text-[#C4B8B0] font-mono mt-0.5 truncate">{item.id}</p>
+                  <p className="text-[11px] text-[#C4B8B0] font-mono mt-0.5 truncate">{item.sku}</p>
                 </div>
                 <span className={`shrink-0 inline-block px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide
                   ${item.isOut ? 'bg-red-50 text-red-600 border border-red-200'

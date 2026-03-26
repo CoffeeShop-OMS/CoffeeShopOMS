@@ -81,7 +81,7 @@ export default function InventoryTable({
                   </td>
                   <td className="px-4 py-3.5">
                     <p className="text-sm font-semibold text-[#1C100A]">{item.name}</p>
-                    <p className="text-[11px] text-[#C4B8B0] font-medium mt-0.5 font-mono">{item.id}</p>
+                    <p className="text-[11px] text-[#C4B8B0] font-medium mt-0.5 font-mono">{item.sku}</p>
                   </td>
                   <td className="px-4 py-3.5">
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${cc.bg} ${cc.text} ${cc.border}`}>
