@@ -74,7 +74,7 @@ export const createInventoryItem = (token, payload) =>
 
 export const updateInventoryItem = (token, itemId, payload) =>
   request(`/inventory/${itemId}`, {
-    method: "PUT",
+    method: "PATCH",
     headers: {
       "Content-Type": "application/json",
       ...authHeader(token),

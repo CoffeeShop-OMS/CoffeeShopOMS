@@ -16,15 +16,17 @@ const normalizeServiceAccount = (serviceAccount = {}) => {
 
 const serviceAccountFromEnv = () => {
   const directEnvAccount = normalizeServiceAccount({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY,
+    projectId: process.env.ADMINSDK_PROJECT_ID || process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.ADMINSDK_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.ADMINSDK_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY,
   });
   if (directEnvAccount) return directEnvAccount;
 
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) return null;
+  const rawJson =
+    process.env.ADMINSDK_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!rawJson) return null;
   try {
-    return normalizeServiceAccount(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON));
+    return normalizeServiceAccount(JSON.parse(rawJson));
   } catch {
     return null;
   }
@@ -35,6 +37,7 @@ if (!admin.apps.length) {
   const serviceAccountPath = path.join(__dirname, "..", "service-account.json");
   const envAccount = serviceAccountFromEnv();
   const projectId =
+    process.env.ADMINSDK_PROJECT_ID ||
     process.env.FIREBASE_PROJECT_ID ||
     process.env.GOOGLE_CLOUD_PROJECT ||
     process.env.GCLOUD_PROJECT ||
@@ -65,7 +68,7 @@ if (!admin.apps.length) {
     if (!isFirebaseRuntime) {
       console.warn(
         "[firebase] No local Firebase Admin key found. For local dev, add service-account.json " +
-          "or set FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY in .env."
+          "or set ADMINSDK_PROJECT_ID/ADMINSDK_CLIENT_EMAIL/ADMINSDK_PRIVATE_KEY in .env."
       );
     }
   }
