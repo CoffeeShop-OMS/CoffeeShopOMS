@@ -1,5 +1,40 @@
 const { body, param, query, validationResult } = require("express-validator");
 
+const INVENTORY_CATEGORIES = [
+  "beans",
+  "milk",
+  "syrup",
+  "packaging",
+  "equipment",
+  "add-ins",
+  "powder",
+  "other",
+];
+
+const CATEGORY_ALIASES = {
+  beans: "beans",
+  bean: "beans",
+  milk: "milk",
+  syrup: "syrup",
+  packaging: "packaging",
+  cups: "packaging",
+  cup: "packaging",
+  equipment: "equipment",
+  "add-ins": "add-ins",
+  "add ins": "add-ins",
+  addins: "add-ins",
+  powder: "powder",
+  pastries: "other",
+  pastry: "other",
+  other: "other",
+};
+
+const normalizeCategory = (value) => {
+  if (value === undefined || value === null) return value;
+  const normalized = String(value).trim().toLowerCase();
+  return CATEGORY_ALIASES[normalized] || normalized;
+};
+
 // Reusable handler to return validation errors
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -55,13 +90,14 @@ const createItemValidator = [
   body("sku")
     .optional({ values: "falsy" })
     .trim()
-    .isAlphanumeric()
-    .withMessage("SKU must be alphanumeric"),
+    .matches(/^[a-zA-Z]+-[0-9]{3}$/)
+    .withMessage("SKU format must be like Blue-001"),
   body("category")
+    .customSanitizer(normalizeCategory)
     .trim()
     .notEmpty()
     .withMessage("Category is required")
-    .isIn(["beans", "milk", "syrup", "packaging", "equipment", "other"])
+    .isIn(INVENTORY_CATEGORIES)
     .withMessage("Invalid category"),
   body("quantity")
     .isInt({ min: 0 })
@@ -78,7 +114,11 @@ const createItemValidator = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage("Cost price must be a non-negative number"),
-  body("supplier").optional().trim().isLength({ max: 100 }),
+  body("supplier")
+    .optional({ values: "falsy" })
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Supplier must be 100 characters or fewer"),
   validate,
 ];
 
@@ -87,12 +127,18 @@ const updateItemValidator = [
   body("name").optional().trim().isLength({ max: 100 }),
   body("category")
     .optional()
-    .isIn(["beans", "milk", "syrup", "packaging", "equipment", "other"]),
+    .customSanitizer(normalizeCategory)
+    .isIn(INVENTORY_CATEGORIES)
+    .withMessage("Invalid category"),
   body("quantity").optional().isInt({ min: 0 }),
   body("unit").optional().trim().notEmpty(),
   body("lowStockThreshold").optional().isInt({ min: 0 }),
   body("costPrice").optional().isFloat({ min: 0 }),
-  body("supplier").optional().trim().isLength({ max: 100 }),
+  body("supplier")
+    .optional({ values: "falsy" })
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Supplier must be 100 characters or fewer"),
   validate,
 ];
 

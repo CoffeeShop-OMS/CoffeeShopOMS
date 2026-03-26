@@ -12,8 +12,6 @@ export default function ItemDrawer({
   inputCls,
   btnBrown,
 }) {
-  if (!isOpen) return null;
-
   const title = isEditMode ? 'Update Item' : 'Add New Item';
   const subtitle = isEditMode ? 'Modify the details for this inventory item.' : 'Fill in the details for the new inventory item.';
   const submitText = isEditMode ? 'Update Item' : 'Save Item';
@@ -26,7 +24,7 @@ export default function ItemDrawer({
       ]
     : [
         { label: 'Item Name', field: 'itemName', type: 'text', placeholder: 'e.g. Arabica Beans' },
-        { label: 'Initial Stock', field: 'initialStock', type: 'number', placeholder: 'e.g. 10' },
+        { label: 'Stock Level', field: 'initialStock', type: 'number', placeholder: 'e.g. 120' },
         { label: 'Cost per Unit', field: 'costPerUnit', type: 'number', placeholder: 'e.g. 12.50' },
         { label: 'Minimum Stock', field: 'minimumStock', type: 'number', placeholder: 'e.g. 50' },
       ];
@@ -36,9 +34,17 @@ export default function ItemDrawer({
       <button
         aria-label="Close"
         onClick={onClose}
-        className="fixed inset-0 bg-[#1C100A]/20 backdrop-blur-[2px] z-40 border-none p-0 cursor-default w-full"
+        className={`fixed inset-0 bg-[#1C100A]/20 backdrop-blur-[2px] z-40 border-none p-0 cursor-default w-full transition-opacity duration-300 ${
+          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
       />
-      <aside className="fixed inset-0 sm:inset-auto sm:top-0 sm:right-0 sm:h-screen sm:w-full sm:max-w-[420px] bg-white sm:border-l border-[#EAE5E0] shadow-2xl z-50 flex flex-col">
+      <aside
+        className={`fixed inset-0 sm:inset-auto sm:top-0 sm:right-0 sm:h-screen sm:w-full sm:max-w-105 bg-white sm:border-l border-[#EAE5E0] shadow-2xl z-50 flex flex-col transition-all duration-300 ease-out ${
+          isOpen
+            ? 'opacity-100 translate-x-0 sm:translate-x-0'
+            : 'opacity-0 translate-x-full sm:translate-x-full pointer-events-none'
+        }`}
+      >
         <form onSubmit={onSubmit} className="flex flex-col h-full">
           <div className="px-5 sm:px-7 pt-5 sm:pt-7 pb-4 sm:pb-5 border-b border-[#F0EDE8] bg-[#FDFCFB]">
             <div className="flex justify-between items-start">
@@ -65,11 +71,11 @@ export default function ItemDrawer({
                   value={item[field]}
                   onChange={(e) => {
                     let value = e.target.value;
-                    
+
                     if (type === 'number') {
                       // Allow only numbers and decimal point
                       value = value.replace(/[^0-9.]/g, '');
-                      
+
                       // For cost, allow up to 2 decimals
                       if (field === 'costPerUnit') {
                         const parts = value.split('.');
@@ -83,7 +89,7 @@ export default function ItemDrawer({
                         value = value.replace(/\./g, '');
                       }
                     }
-                    
+
                     setItem((p) => ({ ...p, [field]: value }));
                   }}
                   className={inputCls}
@@ -99,7 +105,7 @@ export default function ItemDrawer({
                 <Dropdown
                   value={item.category}
                   onChange={(val) => setItem((p) => ({ ...p, category: val }))}
-                  options={['Beans', 'Milk', 'Syrup', 'Cups', 'Pastries']}
+                  options={['Beans', 'Milk', 'Syrup', 'Cups', 'Pastries', 'Equipment', 'Add-ins', 'Powder', 'Other']}
                   placeholder="Select category"
                 />
               </div>

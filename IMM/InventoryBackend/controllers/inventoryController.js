@@ -12,24 +12,27 @@ const categoryToBackend = {
   'Cups': 'packaging',
   'Pastries': 'other',
   'Equipment': 'equipment',
+  'Add-ins': 'add-ins',
+  'Powder': 'powder',
   'Other': 'other',
 };
 
-const sanitizeSku = (value = "") =>
-  String(value)
-    .trim()
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toUpperCase();
+const normalizeSkuPrefix = (value = "Item") => {
+  const lettersOnly = String(value).replace(/[^a-zA-Z]/g, "").slice(0, 12);
+  if (!lettersOnly) return "Item";
+  return lettersOnly.charAt(0).toUpperCase() + lettersOnly.slice(1).toLowerCase();
+};
 
-const generateSku = (name = "ITEM", suffix = Date.now().toString().slice(-6)) => {
-  const prefix =
-    String(name)
-      .trim()
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .toUpperCase()
-      .slice(0, 6) || "ITEM";
+const sanitizeSku = (value = "") => {
+  const match = String(value).trim().match(/^([a-zA-Z]+)-([0-9]{3})$/);
+  if (!match) return "";
+  return `${normalizeSkuPrefix(match[1])}-${match[2]}`;
+};
 
-  return `${prefix}${suffix}`;
+const generateSku = (name = "Item", suffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0')) => {
+  const firstWord = String(name).trim().match(/[a-zA-Z]+/)?.[0] || "Item";
+  const prefix = normalizeSkuPrefix(firstWord);
+  return `${prefix}-${suffix}`;
 };
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -87,7 +90,7 @@ const createItem = async (req, res) => {
       }
 
       attempts += 1;
-      const randomSuffix = `${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
+      const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       finalSku = generateSku(cleanName, randomSuffix);
     }
 
@@ -138,8 +141,9 @@ const createItem = async (req, res) => {
  */
 const getAllItems = async (req, res) => {
   try {
-    const { category, lowStock, search, limit = 20, startAfter } = req.query;
+    const { category, lowStock, search, status = "active", limit = 20, startAfter } = req.query;
     const limitNum = Math.min(parseInt(limit), 100);
+    const normalizedStatus = String(status || "active").toLowerCase();
 
     // Use a broad query + in-memory filtering to avoid composite-index failures
     // in environments where Firestore indexes are not yet created.
@@ -151,9 +155,16 @@ const getAllItems = async (req, res) => {
     }
 
     const snapshot = await query.get();
-    let items = snapshot.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
-      .filter((i) => i.status === "active");
+    let items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+    // Default behavior remains active-only. Optional query allows archived/all.
+    if (normalizedStatus === "archived") {
+      items = items.filter((i) => (i.status || "active") === "deleted");
+    } else if (normalizedStatus === "all") {
+      items = items.filter((i) => ["active", "deleted"].includes(i.status || "active"));
+    } else {
+      items = items.filter((i) => (i.status || "active") === "active");
+    }
 
     if (category) items = items.filter((i) => i.category === category);
     if (lowStock === "true") items = items.filter((i) => i.isLowStock === true);
@@ -241,7 +252,7 @@ const updateItem = async (req, res) => {
     await docRef.update(updates);
     await logActivity("UPDATE", req.params.id, current.name, req.user.uid, updates);
 
-    res.json({ success: true, message: "Item updated successfully", data: { id: req.params.id, ...updates } });
+    res.json({ success: true, message: "Item updated successfully", data: { id: req.params.id, ...current, ...updates } });
   } catch (error) {
     console.error("updateItem error:", error);
     res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to update item") });

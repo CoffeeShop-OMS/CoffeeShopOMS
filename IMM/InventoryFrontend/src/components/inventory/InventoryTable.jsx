@@ -5,6 +5,8 @@ const categoryColors = {
   Cups: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-400', border: 'border-emerald-200' },
   Pastries: { bg: 'bg-rose-50', text: 'text-rose-700', dot: 'bg-rose-400', border: 'border-rose-200' },
   Equipment: { bg: 'bg-stone-50', text: 'text-stone-600', dot: 'bg-stone-400', border: 'border-stone-200' },
+  'Add-ins': { bg: 'bg-pink-50', text: 'text-pink-700', dot: 'bg-pink-400', border: 'border-pink-200' },
+  Powder: { bg: 'bg-teal-50', text: 'text-teal-700', dot: 'bg-teal-400', border: 'border-teal-200' },
   Other: { bg: 'bg-stone-50', text: 'text-stone-600', dot: 'bg-stone-400', border: 'border-stone-200' },
 };
 
@@ -17,11 +19,12 @@ export default function InventoryTable({
   onSelectedChange = () => {},
 }) {
   if (!Array.isArray(items)) return null;
+  const selectableItems = items.filter((item) => !item.isArchived);
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
       const newSelected = new Set(selectedItems);
-      items.forEach((item) => newSelected.add(item.id));
+      selectableItems.forEach((item) => newSelected.add(item.id));
       onSelectedChange(newSelected);
     } else {
       onSelectedChange(new Set());
@@ -38,7 +41,7 @@ export default function InventoryTable({
     onSelectedChange(newSelected);
   };
 
-  const allSelected = items.length > 0 && items.every((item) => selectedItems.has(item.id));
+  const allSelected = selectableItems.length > 0 && selectableItems.every((item) => selectedItems.has(item.id));
 
   return (
     <div className="hidden md:block overflow-x-auto">
@@ -48,7 +51,7 @@ export default function InventoryTable({
             <th className="w-12 text-center px-4 py-3">
               <input type="checkbox" checked={allSelected} onChange={handleSelectAll} className="accent-[#3D261D] rounded" />
             </th>
-            {['Item Details', 'Category', 'Stock', 'Reorder Level', 'Current Value', 'Maximum Value', 'Status', 'Actions'].map((h) => (
+            {['Item', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Current Value', 'Maximum Value', 'Date Added', 'Last Activity', 'Status', 'Actions'].map((h) => (
               <th key={h} className="px-4 py-3 text-left text-[10px] font-bold text-[#A89080] uppercase tracking-widest whitespace-nowrap">{h}</th>
             ))}
           </tr>
@@ -56,13 +59,13 @@ export default function InventoryTable({
         <tbody>
           {isLoading ? (
             <tr>
-              <td colSpan={9} className="text-center text-[#A89080] py-12 text-sm">
-                Loading inventory…
+              <td colSpan={12} className="text-center text-[#A89080] py-12 text-sm">
+                Loading inventory...
               </td>
             </tr>
           ) : items.length === 0 ? (
             <tr>
-              <td colSpan={9} className="text-center text-[#A89080] py-12 text-sm">
+              <td colSpan={12} className="text-center text-[#A89080] py-12 text-sm">
                 No items found.
               </td>
             </tr>
@@ -74,14 +77,16 @@ export default function InventoryTable({
                 <tr
                   key={item.id}
                   className={`border-b border-[#F5F2EE] last:border-0 transition-colors duration-100
-                    ${isSelected ? 'bg-[#3D261D]/5' : item.isOut ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-[#FAF8F5]'}`}
+                    ${isSelected ? 'bg-[#3D261D]/5' : item.isArchived ? 'bg-slate-50/80 hover:bg-slate-50' : item.isOut ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-[#FAF8F5]'}`}
                 >
                   <td className="text-center px-4 py-3.5">
-                    <input type="checkbox" checked={isSelected} onChange={() => handleSelectItem(item.id)} className="accent-[#3D261D]" />
+                    <input type="checkbox" checked={isSelected} disabled={item.isArchived} onChange={() => handleSelectItem(item.id)} className="accent-[#3D261D] disabled:opacity-40" />
                   </td>
                   <td className="px-4 py-3.5">
                     <p className="text-sm font-semibold text-[#1C100A]">{item.name}</p>
-                    <p className="text-[11px] text-[#C4B8B0] font-medium mt-0.5 font-mono">{item.id}</p>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <p className="text-sm font-mono text-[#7A6355]">{item.sku}</p>
                   </td>
                   <td className="px-4 py-3.5">
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${cc.bg} ${cc.text} ${cc.border}`}>
@@ -90,10 +95,9 @@ export default function InventoryTable({
                     </span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <p className={`text-sm font-bold ${item.isOut ? 'text-red-500' : item.isLow ? 'text-amber-600' : 'text-[#1C100A]'}`}>
+                    <p className={`text-sm font-bold ${item.isArchived ? 'text-slate-500' : item.isOut ? 'text-red-500' : item.isLow ? 'text-amber-600' : 'text-[#1C100A]'}`}>
                       {item.stock}
                     </p>
-                    <p className="text-[11px] text-[#C4B8B0] mt-0.5">Updated {item.date}</p>
                   </td>
                   <td className="px-4 py-3.5 text-sm font-medium text-[#7A6355] whitespace-nowrap">{item.reorder}</td>
                   <td className="px-4 py-3.5">
@@ -102,19 +106,26 @@ export default function InventoryTable({
                   <td className="px-4 py-3.5">
                     <span className="text-sm font-semibold text-[#3D261D]">₱{item.maxValue.toFixed(2)}</span>
                   </td>
+                  <td className="px-4 py-3.5 text-sm text-[#7A6355] whitespace-nowrap">{item.dateAdded}</td>
+                  <td className="px-4 py-3.5 text-sm text-[#7A6355] whitespace-nowrap">{item.lastActivity}</td>
                   <td className="px-4 py-3.5">
                     <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide whitespace-nowrap
-                      ${item.isOut ? 'bg-red-50 text-red-600 border border-red-200'
+                      ${item.isArchived ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                        : item.isOut ? 'bg-red-50 text-red-600 border border-red-200'
                         : item.isLow ? 'bg-amber-50 text-amber-600 border border-amber-200'
                         : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
                       {item.status}
                     </span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <div className="flex gap-1.5 justify-center">
-                      <button onClick={() => onUpdate(item)} className="px-3 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all duration-150">Update</button>
-                      <button onClick={() => onDelete(item)} className="px-3 py-1.5 text-[11px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all duration-150">Delete</button>
-                    </div>
+                    {item.isArchived ? (
+                      <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200">Archived</span>
+                    ) : (
+                      <div className="flex gap-1.5 justify-center">
+                        <button onClick={() => onUpdate(item)} className="px-3 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all duration-150">Update</button>
+                        <button onClick={() => onDelete(item)} className="px-3 py-1.5 text-[11px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all duration-150">Archive</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Filter,  Search, X, ChevronRight, MoreVertical, Coffee} from 'lucide-react';
+import { Filter, Search, X, ChevronRight, MoreVertical, Coffee, Archive, Package, AlertTriangle, TrendingDown, RefreshCcw } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getAuthSession } from '../utils/authStorage';
 import { createInventoryItem, updateInventoryItem, deleteInventoryItem, getInventory } from '../services/api';
@@ -11,6 +11,7 @@ import InventoryTable from '../components/inventory/InventoryTable';
 import InventoryMobileList from '../components/inventory/InventoryMobileList';
 import ItemDrawer from '../components/inventory/ItemDrawer';
 import DeleteConfirmModal from '../components/inventory/DeleteConfirmModal';
+import DuplicateItemModal from '../components/inventory/DuplicateItemModal';
 
 const categoryColors = {
   Beans:     { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-400',   border: 'border-amber-200' },
@@ -19,17 +20,19 @@ const categoryColors = {
   Cups:      { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-400', border: 'border-emerald-200' },
   Pastries:  { bg: 'bg-rose-50',    text: 'text-rose-700',    dot: 'bg-rose-400',    border: 'border-rose-200' },
   Equipment: { bg: 'bg-stone-50',   text: 'text-stone-600',   dot: 'bg-stone-400',   border: 'border-stone-200' },
+  'Add-ins': { bg: 'bg-orange-50',  text: 'text-orange-700',  dot: 'bg-orange-400',  border: 'border-orange-200' },
+  Powder:    { bg: 'bg-yellow-50',  text: 'text-yellow-700',  dot: 'bg-yellow-400',  border: 'border-yellow-200' },
   Other:     { bg: 'bg-stone-50',   text: 'text-stone-600',   dot: 'bg-stone-400',   border: 'border-stone-200' },
 };
 
 const categoryToBackend = {
   Beans: 'beans', Milk: 'milk', Syrup: 'syrup',
-  Cups: 'packaging', Pastries: 'other', Equipment: 'equipment', Other: 'other',
+  Cups: 'packaging', Pastries: 'other', Equipment: 'equipment', 'Add-ins': 'add-ins', Powder: 'powder', Other: 'other',
 };
 
 const categoryFromBackend = {
   beans: 'Beans', milk: 'Milk', syrup: 'Syrup',
-  packaging: 'Cups', equipment: 'Equipment', other: 'Other',
+  packaging: 'Cups', equipment: 'Equipment', 'add-ins': 'Add-ins', powder: 'Powder', other: 'Other',
 };
 
 const formatFirestoreDate = (value) => {
@@ -47,21 +50,37 @@ const formatFirestoreDate = (value) => {
 const mapItemToUi = (item) => {
   const quantity  = Number(item.quantity ?? 0);
   const threshold = Number(item.lowStockThreshold ?? 0);
+  const isArchived = (item.status || 'active') === 'deleted';
   const isOut     = quantity <= 0;
-  const isLow     = !isOut && (item.isLowStock ?? quantity <= threshold);
+  const isLow     = !isArchived && !isOut && (item.isLowStock ?? quantity <= threshold);
   const costPrice = Number(item.costPrice || 0);
   const unit      = item.unit || '';
+  const dateAdded = formatFirestoreDate(item.createdAt);
+  const lastActivity = formatFirestoreDate(item.updatedAt || item.createdAt);
   return {
-    id: item.id, name: item.name,
+    id: item.id, name: item.name, sku: item.sku || '',
     cat: categoryFromBackend[item.category] || 'Other',
-    stock: quantity > 0 ? `${quantity} ${unit}`.trim() : '0',
-    status: isOut ? 'Out of Stock' : isLow ? 'Low Stock' : 'Healthy',
+    stock: `${quantity} ${unit}`.trim(),
+    status: isArchived ? 'Archived' : isOut ? 'Out of Stock' : isLow ? 'Low Stock' : 'Healthy',
     reorder: `${threshold} ${unit}`.trim(),
-    date: formatFirestoreDate(item.updatedAt || item.createdAt),
-    isLow, isOut, quantity, threshold, costPrice,
+    date: lastActivity,
+    dateAdded,
+    lastActivity,
+    isLow, isOut, isArchived, quantity, threshold, costPrice,
+    recordStatus: item.status || 'active',
     currentValue: quantity * costPrice,
     maxValue: threshold * costPrice,
   };
+};
+
+const extractApiErrorMessage = (error, fallback) => {
+  const validationErrors = error?.body?.errors;
+  if (Array.isArray(validationErrors) && validationErrors.length > 0) {
+    const first = validationErrors[0];
+    if (first?.field && first?.message) return `${first.field}: ${first.message}`;
+    if (first?.message) return first.message;
+  }
+  return error?.message || fallback;
 };
 
 const btnBrown = 'bg-[#3D261D] hover:bg-[#2E1C15] active:scale-[0.98] text-white font-semibold transition-all duration-150';
@@ -69,14 +88,14 @@ const inputCls = 'w-full border border-[#E2DDD8] rounded-xl px-3.5 py-2.5 text-s
 
 const exportToCSV = (items) => {
   if (items.length === 0) {
-    alert('No items to export');
+    toast.info('No items to export');
     return;
   }
-  
-  const headers = ['Item ID', 'Item Name', 'Category', 'Stock', 'Reorder Level', 'Unit Cost', 'Current Value', 'Max Value', 'Status', 'Last Updated'];
+
+  const headers = ['Item Name', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Unit Cost', 'Current Value', 'Max Value', 'Status', 'Last Updated'];
   const rows = items.map((item) => [
-    item.id,
     item.name,
+    item.sku,
     item.cat,
     item.quantity,
     item.threshold,
@@ -111,31 +130,48 @@ export default function Inventory() {
   const [isLoadingItems,  setIsLoadingItems]  = useState(true);
   const [searchTerm,      setSearchTerm]      = useState('');
   const [categoryFilter,  setCategoryFilter]  = useState('All');
+  const [statusFilter,    setStatusFilter]    = useState('Active');
   const [inventoryItems,  setInventoryItems]  = useState([]);
   const [showFilters,     setShowFilters]     = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [itemToDelete,    setItemToDelete]    = useState(null);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateMatchItem, setDuplicateMatchItem] = useState(null);
+  const [pendingCreateInput, setPendingCreateInput] = useState(null);
   const [currentPage,     setCurrentPage]     = useState(1);
   const [selectedItems,   setSelectedItems]   = useState(new Set());
   const [isBulkDeleting,  setIsBulkDeleting]  = useState(false);
   const itemsPerPage = 10;
   const [newItem, setNewItem] = useState({
-    itemName: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '',
+    itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '',
   });
+
+  // Helper function to normalize item names for comparison
+  const normalizeNameForComparison = (name) => {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/[^\w\s]/g, '');
+  };
 
   const filteredItems = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return inventoryItems.filter((item) => {
       const matchCat    = categoryFilter === 'All' || item.cat === categoryFilter;
-      const matchSearch = !term || item.name.toLowerCase().includes(term) || item.id.toLowerCase().includes(term);
-      return matchCat && matchSearch;
+      const matchSearch = !term || item.name.toLowerCase().includes(term) || item.sku.toLowerCase().includes(term);
+      const matchStatus =
+        statusFilter === 'All' ||
+        (statusFilter === 'Active' && !item.isArchived) ||
+        (statusFilter === 'Archived' && item.isArchived);
+      return matchCat && matchSearch && matchStatus;
     });
-  }, [inventoryItems, searchTerm, categoryFilter]);
+  }, [inventoryItems, searchTerm, categoryFilter, statusFilter]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter]);
+  }, [searchTerm, categoryFilter, statusFilter]);
 
   // Calculate paginated items
   const paginatedItems = useMemo(() => {
@@ -146,12 +182,33 @@ export default function Inventory() {
 
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
 
-  const stats = useMemo(() => ({
-    total:    inventoryItems.length,
-    lowCount: inventoryItems.filter((i) => i.isLow).length,
-    outCount: inventoryItems.filter((i) => i.isOut).length,
-    value:    inventoryItems.reduce((s, i) => s + i.quantity * i.costPrice, 0),
-  }), [inventoryItems]);
+  const stats = useMemo(() => {
+    const activeItems = inventoryItems.filter((i) => !i.isArchived);
+    const archivedItems = inventoryItems.filter((i) => i.isArchived);
+    return {
+      total: activeItems.length,
+      lowCount: activeItems.filter((i) => i.isLow).length,
+      outCount: activeItems.filter((i) => i.isOut).length,
+      archivedCount: archivedItems.length,
+      value: activeItems.reduce((s, i) => s + i.quantity * i.costPrice, 0),
+    };
+  }, [inventoryItems]);
+
+  const selectedActiveCount = useMemo(() => {
+    if (selectedItems.size === 0) return 0;
+    return inventoryItems.filter((item) => selectedItems.has(item.id) && !item.isArchived).length;
+  }, [selectedItems, inventoryItems]);
+
+  const statCards = useMemo(
+    () => [
+      { icon: Package, label: 'Total Items', value: stats?.total?.toString() ?? '0', sub: 'Active inventory items', accent: '#3D261D', iconBg: 'bg-[#EDE4DC]', iconColor: '#3D261D' },
+      { icon: AlertTriangle, label: 'Low Stock', value: stats?.lowCount?.toString() ?? '0', sub: 'Need attention', accent: '#B45309', iconBg: 'bg-amber-100', iconColor: '#B45309' },
+      { icon: TrendingDown, label: 'Out of Stock', value: stats?.outCount?.toString() ?? '0', sub: 'Need replenishment', accent: '#DC2626', iconBg: 'bg-red-100', iconColor: '#DC2626' },
+      { icon: Archive, label: 'Archived', value: stats?.archivedCount?.toString() ?? '0', sub: 'Hidden from active inventory', accent: '#6B7280', iconBg: 'bg-slate-100', iconColor: '#475569' },
+      { icon: RefreshCcw, label: 'Inventory Value', value: stats ? `₱${Number(stats.value || 0).toFixed(2)}` : '₱0.00', sub: 'Active inventory valuation', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669' },
+    ],
+    [stats]
+  );
 
   useEffect(() => {
     const loadItems = async () => {
@@ -159,7 +216,7 @@ export default function Inventory() {
       const session = getAuthSession();
       if (!session?.token) { toast.error('No active session. Please login again.'); setIsLoadingItems(false); return; }
       try {
-        const result = await getInventory(session.token, { limit: 100 });
+        const result = await getInventory(session.token, { limit: 100, status: 'all' });
         setInventoryItems((result.data || []).map(mapItemToUi));
       } catch (error) {
         toast.error(error?.message || 'Cannot connect to backend. Please check server connection.');
@@ -172,12 +229,13 @@ export default function Inventory() {
     setIsDrawerOpen(false);
     setDrawerMode('add');
     setFormError('');
-    setNewItem({ itemName: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '' });
+    setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '' });
+    clearDuplicatePrompt();
   };
 
   const handleAddClick = () => {
     setDrawerMode('add');
-    setNewItem({ itemName: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '' });
+    setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '' });
     setFormError('');
     setIsDrawerOpen(true);
   };
@@ -186,6 +244,7 @@ export default function Inventory() {
     setDrawerMode('edit');
     setNewItem({
       id: item.id,
+      sku: item.sku,
       itemName: item.name,
       category: item.cat,
       unit: item.stock.split(' ')[1] || 'pcs',
@@ -208,126 +267,256 @@ export default function Inventory() {
     if (!session?.token) { toast.error('Session expired. Please login again.'); return; }
     try {
       await deleteInventoryItem(session.token, itemToDelete.id);
-      setInventoryItems((prev) => prev.filter((item) => item.id !== itemToDelete.id));
+      const today = new Date().toISOString().slice(0, 10);
+      setInventoryItems((prev) =>
+        prev.map((item) =>
+          item.id === itemToDelete.id
+            ? { ...item, isArchived: true, recordStatus: 'deleted', status: 'Archived', lastActivity: today, date: today }
+            : item
+        )
+      );
+      setSelectedItems((prev) => {
+        const next = new Set(prev);
+        next.delete(itemToDelete.id);
+        return next;
+      });
       setShowDeleteModal(false);
       setItemToDelete(null);
-      toast.success('Item deleted successfully');
+      toast.success('Item archived successfully');
     } catch (error) { toast.error(error?.message || 'Cannot connect to backend. Please check server connection.'); }
   };
 
   const handleBulkDelete = async () => {
-    if (selectedItems.size === 0) return;
-    if (!window.confirm(`Delete ${selectedItems.size} item(s)? This cannot be undone.`)) return;
-    
+    if (selectedActiveCount === 0) return;
+    if (!window.confirm(`Archive ${selectedActiveCount} item(s)? These items will be hidden from inventory.`)) return;
+
     const session = getAuthSession();
     if (!session?.token) { toast.error('Session expired. Please login again.'); return; }
     setIsBulkDeleting(true);
     try {
-      const itemIds = Array.from(selectedItems);
+      const itemIds = inventoryItems
+        .filter((item) => selectedItems.has(item.id) && !item.isArchived)
+        .map((item) => item.id);
       await Promise.all(itemIds.map((id) => deleteInventoryItem(session.token, id)));
-      setInventoryItems((prev) => prev.filter((item) => !selectedItems.has(item.id)));
+      const today = new Date().toISOString().slice(0, 10);
+      setInventoryItems((prev) =>
+        prev.map((item) =>
+          itemIds.includes(item.id)
+            ? { ...item, isArchived: true, recordStatus: 'deleted', status: 'Archived', lastActivity: today, date: today }
+            : item
+        )
+      );
       setSelectedItems(new Set());
       setCurrentPage(1);
-      toast.success(`${itemIds.length} item(s) deleted successfully`);
-    } catch (error) { toast.error(error?.message || 'Failed to delete items'); }
+      toast.success(`${itemIds.length} item(s) archived successfully`);
+    } catch (error) { toast.error(error?.message || 'Failed to archive items'); }
     finally { setIsBulkDeleting(false); }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setFormError('');
-    const session = getAuthSession();
-    if (!session?.token) { setFormError('Session expired. Please login again.'); return; }
-    
-    const itemName = newItem.itemName.trim();
-    const costPerUnit = Number(newItem.costPerUnit);
-    const minimumStock = Number(newItem.minimumStock);
-    const quantity = Number(newItem.initialStock);
+  function clearDuplicatePrompt() {
+    setShowDuplicateModal(false);
+    setDuplicateMatchItem(null);
+    setPendingCreateInput(null);
+  }
 
-    // Validation checks
-    if (!itemName) {
-      toast.error('Item name is required.');
-      return;
-    }
-    if (itemName.length < 2) {
-      toast.error('Item name must be at least 2 characters.');
-      return;
-    }
-    if (itemName.length > 100) {
-      toast.error('Item name cannot exceed 100 characters.');
-      return;
-    }
-    if (!newItem.costPerUnit || Number.isNaN(costPerUnit)) {
-      toast.error('Cost per unit is required and must be a valid number.');
-      return;
-    }
-    if (costPerUnit < 0) {
-      toast.error('Cost per unit cannot be negative.');
-      return;
-    }
-    if (costPerUnit > 999999) {
-      toast.error('Cost per unit is too high.');
-      return;
-    }
-    if (!newItem.minimumStock || Number.isNaN(minimumStock)) {
-      toast.error('Minimum stock is required and must be a valid number.');
-      return;
-    }
-    if (minimumStock < 0) {
-      toast.error('Minimum stock cannot be negative.');
-      return;
-    }
-    if (!newItem.initialStock || Number.isNaN(quantity)) {
-      toast.error('Current stock is required and must be a valid number.');
-      return;
-    }
-    if (quantity < 0) {
-      toast.error('Current stock cannot be negative.');
-      return;
-    }
-    if (!newItem.category) {
-      toast.error('Please select a category.');
-      return;
-    }
-    if (!newItem.unit) {
-      toast.error('Please select a unit.');
+  const submitCreateItem = async ({ token, itemName, category, unit, initialStock, minimumStock, costPerUnit }) => {
+    const rawPrefix = (itemName.match(/[a-zA-Z]+/)?.[0] || 'Item').slice(0, 12);
+    const prefix = rawPrefix.charAt(0).toUpperCase() + rawPrefix.slice(1).toLowerCase();
+    const number = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    const sku = `${prefix}-${number}`;
+
+    const result = await createInventoryItem(token, {
+      name: itemName,
+      sku,
+      category: categoryToBackend[category] || 'other',
+      unit,
+      quantity: initialStock,
+      lowStockThreshold: minimumStock,
+      costPrice: costPerUnit,
+      supplier: '',
+    });
+
+    if (result?.data) setInventoryItems((prev) => [mapItemToUi(result.data), ...prev]);
+    toast.success('Item created successfully');
+    closeDrawer();
+  };
+
+  const handleDuplicateAddItem = async () => {
+    if (!pendingCreateInput) return clearDuplicatePrompt();
+
+    const session = getAuthSession();
+    if (!session?.token) {
+      clearDuplicatePrompt();
+      toast.error('Session expired. Please login again.');
       return;
     }
 
     try {
-      if (drawerMode === 'add') {
-        const normalizedName = itemName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6) || 'ITEM';
-        const sku = `${normalizedName}${Date.now().toString().slice(-6)}`;
-        const result = await createInventoryItem(session.token, {
-          name: itemName, sku, category: categoryToBackend[newItem.category] || 'other',
-          quantity: Math.floor(quantity), unit: newItem.unit,
-          lowStockThreshold: Math.floor(minimumStock), costPrice: costPerUnit, supplier: '',
-        });
-        if (result?.data) setInventoryItems((prev) => [mapItemToUi(result.data), ...prev]);
-        toast.success('Item created successfully');
+      await submitCreateItem({
+        token: session.token,
+        ...pendingCreateInput,
+      });
+    } catch (error) {
+      if (error?.status === 409) {
+        toast.error(error?.message || 'An item with this SKU already exists.');
       } else {
-        const result = await updateInventoryItem(session.token, newItem.id, {
-          name: itemName,
-          category: categoryToBackend[newItem.category] || 'other',
-          quantity: Math.floor(quantity),
-          unit: newItem.unit,
-          lowStockThreshold: Math.floor(minimumStock),
-          costPrice: costPerUnit,
-        });
-        if (result?.data) {
-          setInventoryItems((prev) => prev.map((item) => item.id === newItem.id ? mapItemToUi(result.data) : item));
-        }
-        toast.success('Item updated successfully');
+        toast.error(extractApiErrorMessage(error, 'Cannot connect to backend. Please check server connection.'));
       }
-      closeDrawer();
-    } catch (error) { toast.error(error?.message || 'Cannot connect to backend. Please check server connection.'); }
+    } finally {
+      clearDuplicatePrompt();
+    }
   };
+
+  const handleDuplicateUseExisting = () => {
+    const existing = duplicateMatchItem;
+    clearDuplicatePrompt();
+    if (!existing) return;
+    handleUpdateClick(existing);
+    toast.info(`Loaded existing item "${existing.name}" for update.`);
+  };
+
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  setFormError('');
+  const session = getAuthSession();
+  if (!session?.token) {
+    setFormError('Session expired. Please login again.');
+    return;
+  }
+
+  const itemName = newItem.itemName.trim();
+  const costPerUnit = parseFloat(newItem.costPerUnit);
+  const minimumStock = parseInt(newItem.minimumStock, 10);
+  const initialStock = parseInt(newItem.initialStock, 10);
+
+  // Validation checks
+  if (!itemName) {
+    toast.error('Item name is required.');
+    return;
+  }
+  if (itemName.length < 2) {
+    toast.error('Item name must be at least 2 characters.');
+    return;
+  }
+  if (itemName.length > 100) {
+    toast.error('Item name cannot exceed 100 characters.');
+    return;
+  }
+  if (!newItem.costPerUnit || isNaN(costPerUnit)) {
+    toast.error('Cost per unit is required and must be a valid number.');
+    return;
+  }
+  if (costPerUnit < 0) {
+    toast.error('Cost per unit cannot be negative.');
+    return;
+  }
+  if (costPerUnit > 999999) {
+    toast.error('Cost per unit is too high.');
+    return;
+  }
+  if (!newItem.minimumStock || isNaN(minimumStock)) {
+    toast.error('Minimum stock is required and must be a valid number.');
+    return;
+  }
+  if (minimumStock < 0) {
+    toast.error('Minimum stock cannot be negative.');
+    return;
+  }
+  if (!newItem.category) {
+    toast.error('Please select a category.');
+    return;
+  }
+  if (!newItem.unit) {
+    toast.error('Please select a unit.');
+    return;
+  }
+  if (drawerMode === 'add') {
+    if ((newItem.initialStock === '' || newItem.initialStock === undefined) || Number.isNaN(initialStock)) {
+      toast.error('Stock level is required and must be a whole number.');
+      return;
+    }
+    if (initialStock < 0) {
+      toast.error('Stock level cannot be negative.');
+      return;
+    }
+  }
+  if (drawerMode === 'edit') {
+    if ((newItem.initialStock === '' || newItem.initialStock === undefined) || Number.isNaN(initialStock)) {
+      toast.error('Current stock is required and must be a whole number.');
+      return;
+    }
+    if (initialStock < 0) {
+      toast.error('Current stock cannot be negative.');
+      return;
+    }
+  }
+
+  // Check for duplicate active inventory names before creating a new item
+  if (drawerMode === 'add') {
+    const normalizedNewName = normalizeNameForComparison(itemName);
+    const duplicateItem = inventoryItems.find(
+      (item) => !item.isArchived && normalizeNameForComparison(item.name) === normalizedNewName
+    );
+
+    if (duplicateItem) {
+      setDuplicateMatchItem(duplicateItem);
+      setPendingCreateInput({
+        itemName,
+        category: newItem.category,
+        unit: newItem.unit,
+        initialStock,
+        minimumStock,
+        costPerUnit,
+      });
+      setShowDuplicateModal(true);
+      return;
+    }
+  }
+
+  try {
+    if (drawerMode === 'add') {
+      await submitCreateItem({
+        token: session.token,
+        itemName,
+        category: newItem.category,
+        unit: newItem.unit,
+        initialStock,
+        minimumStock,
+        costPerUnit,
+      });
+    } else {
+      // Update existing item
+      const result = await updateInventoryItem(session.token, newItem.id, {
+        name: itemName,
+        category: categoryToBackend[newItem.category] || 'other',
+        quantity: initialStock,
+        unit: newItem.unit,
+        lowStockThreshold: minimumStock,
+        costPrice: costPerUnit,
+      });
+
+      if (result?.data) {
+        setInventoryItems((prev) =>
+          prev.map((item) => (item.id === newItem.id ? mapItemToUi(result.data) : item))
+        );
+      }
+      toast.success('Item updated successfully');
+      closeDrawer();
+    }
+  } catch (error) {
+    if (error?.status === 409) {
+      toast.error(error?.message || 'An item with this SKU already exists.');
+    } else {
+      toast.error(extractApiErrorMessage(error, 'Cannot connect to backend. Please check server connection.'));
+    }
+  }
+};
 
   return (
     <div className="min-h-screen bg-[#F7F4F0] w-full px-4 sm:px-6 lg:px-10 py-6 lg:py-9">
       <InventoryHeader onAddClick={handleAddClick} btnBrown={btnBrown} onExportCSV={() => exportToCSV(filteredItems)} />
 
-      <StatCards stats={stats} />
+      <StatCards stats={stats} cards={statCards} />
 
       <InventoryAlertBanner lowCount={stats.lowCount} outCount={stats.outCount} />
 
@@ -350,13 +539,13 @@ export default function Inventory() {
             </div>
             <div className="flex items-center gap-2">
               {/* Bulk delete button — shows when items selected */}
-              {selectedItems.size > 0 && (
+              {selectedActiveCount > 0 && (
                 <button
                   onClick={handleBulkDelete}
                   disabled={isBulkDeleting}
-                  className="flex items-center gap-1.5 px-3 py-2 border border-red-200 rounded-xl bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2 border border-amber-200 rounded-xl bg-amber-50 text-amber-600 text-sm font-medium hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
-                  <span>Delete {selectedItems.size}</span>
+                  <span>Archive {selectedActiveCount}</span>
                 </button>
               )}
               {/* Filter toggle — shown on mobile, hidden on md+ */}
@@ -368,14 +557,24 @@ export default function Inventory() {
                 <span>Filter</span>
               </button>
               {/* Category selector — always visible on md+ */}
-              <div className="hidden md:flex items-center gap-2">
+              <div className="hidden md:flex items-center gap-3">
                 <span className="text-xs text-[#9E8A7A] font-medium whitespace-nowrap">Category:</span>
                 <div className="w-40">
                   <Dropdown
                     value={categoryFilter}
                     onChange={setCategoryFilter}
-                    options={['All','Beans','Milk','Syrup','Cups','Pastries','Equipment','Other']}
+                    options={['All','Beans','Milk','Syrup','Cups','Pastries','Equipment','Add-ins','Powder','Other']}
                     placeholder="Select category"
+                    className="text-sm font-semibold text-[#3D261D]"
+                  />
+                </div>
+                <span className="text-xs text-[#9E8A7A] font-medium whitespace-nowrap">View:</span>
+                <div className="w-32">
+                  <Dropdown
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                    options={['Active', 'Archived', 'All']}
+                    placeholder="Select view"
                     className="text-sm font-semibold text-[#3D261D]"
                   />
                 </div>
@@ -389,8 +588,15 @@ export default function Inventory() {
               <Dropdown
                 value={categoryFilter}
                 onChange={setCategoryFilter}
-                options={['All','Beans','Milk','Syrup','Cups','Pastries','Equipment','Other']}
+                options={['All','Beans','Milk','Syrup','Cups','Pastries','Equipment','Add-ins','Powder','Other']}
                 placeholder="Select category"
+              />
+              <span className="text-xs text-[#9E8A7A] font-medium mt-1">View:</span>
+              <Dropdown
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={['Active', 'Archived', 'All']}
+                placeholder="Select view"
               />
             </div>
           )}
@@ -466,6 +672,14 @@ export default function Inventory() {
         item={itemToDelete}
         onCancel={() => { setShowDeleteModal(false); setItemToDelete(null); }}
         onConfirm={handleDeleteConfirm}
+      />
+
+      <DuplicateItemModal
+        isOpen={showDuplicateModal}
+        item={duplicateMatchItem}
+        onAddItem={handleDuplicateAddItem}
+        onUseExisting={handleDuplicateUseExisting}
+        onCancel={clearDuplicatePrompt}
       />
     </div>
   );
