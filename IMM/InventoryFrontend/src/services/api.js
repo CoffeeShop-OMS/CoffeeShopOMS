@@ -88,4 +88,9 @@ export const deleteInventoryItem = (token, itemId) =>
     headers: authHeader(token),
   });
 
+export const getInventoryLogs = (token, params = {}) =>
+  request(`/inventory/logs${toQueryString(params)}`, {
+    headers: authHeader(token),
+  });
+
 export { apiRoot };

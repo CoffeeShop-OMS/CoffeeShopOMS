@@ -16,6 +16,7 @@ const {
   adjustStock,
   getLowStockItems,
   getItemLogs,
+  getAllLogs,
 } = require("../controllers/inventoryController");
 
 // All inventory routes require authentication
@@ -23,6 +24,7 @@ router.use(verifyToken);
 
 // Reports (must be above /:id routes to avoid conflicts)
 router.get("/reports/low-stock", getLowStockItems);
+router.get("/logs", requireRole(["admin", "manager"]), getAllLogs);
 
 // CRUD
 router.get("/", getAllItems);

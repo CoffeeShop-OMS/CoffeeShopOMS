@@ -402,4 +402,40 @@ const getItemLogs = async (req, res) => {
   }
 };
 
-module.exports = { createItem, getAllItems, getItemById, updateItem, deleteItem, adjustStock, getLowStockItems, getItemLogs };
+// ─── CROSS-ITEM ACTIVITY LOGS ─────────────────────────────────────────────────
+
+/**
+ * GET /api/inventory/logs
+ * Supports: ?action=STOCK_ADJUST&limit=200&days=7
+ */
+const getAllLogs = async (req, res) => {
+  try {
+    const { action, limit = 200, days = 7 } = req.query;
+    const limitNum = Math.min(parseInt(limit), 500);
+
+    // Calculate start date (days ago)
+    const now = new Date();
+    const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+    // Query only by timestamp to avoid composite index requirement
+    const query = db.collection(LOG_COLLECTION)
+      .where("timestamp", ">=", startDate)
+      .orderBy("timestamp", "desc")
+      .limit(limitNum);
+
+    const snapshot = await query.get();
+    let logs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+    // Filter by action in memory if specified
+    if (action) {
+      logs = logs.filter((log) => log.action === action);
+    }
+
+    res.json({ success: true, data: logs, count: logs.length });
+  } catch (error) {
+    console.error("getAllLogs error:", error);
+    res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to fetch logs") });
+  }
+};
+
+module.exports = { createItem, getAllItems, getItemById, updateItem, deleteItem, adjustStock, getLowStockItems, getItemLogs, getAllLogs };

@@ -2,17 +2,23 @@ import { useEffect, useState } from 'react';
 import {
   Coffee, Package, Calendar, Plus,
   DollarSign, AlertTriangle, TrendingUp, TrendingDown,
-  PlusCircle, Trash2, ShoppingCart, RefreshCw, ArrowUpRight
+  PlusCircle, Trash2, ShoppingCart, RefreshCw, ArrowUpRight, X
 } from 'lucide-react';
 
 import StatCards from '../components/inventory/StatCards';
-import { getInventory } from '../services/api';
+import DailyUsageGraph from '../components/dashboard/DailyUsageGraph';
+import { getInventory, getInventoryLogs } from '../services/api';
 import { getAuthSession } from '../utils/authStorage';
 import { toast } from 'react-toastify';
 
 export default function Dashboard({ setIsAuthenticated }) {
   const [stats, setStats] = useState({ total: 0, lowCount: 0, outCount: 0, value: 0 });
+  const [alertItems, setAlertItems] = useState([]);
+  const [allAlerts, setAllAlerts] = useState([]);
+  const [showAllAlerts, setShowAllAlerts] = useState(false);
   const [lastSync, setLastSync] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -27,20 +33,34 @@ export default function Dashboard({ setIsAuthenticated }) {
         let lowCount = 0;
         let outCount = 0;
         let value = 0;
+        const alerts = [];
 
         items.forEach((item) => {
           const quantity = Number(item.quantity || 0);
           const threshold = Number(item.lowStockThreshold || 0);
           const costPrice = Number(item.costPrice || 0);
 
-          if (quantity <= 0) outCount += 1;
-          else if (quantity <= threshold) lowCount += 1;
+          if (quantity <= 0) {
+            outCount += 1;
+            alerts.push({ ...item, severity: 'critical' });
+          } else if (quantity <= threshold) {
+            lowCount += 1;
+            alerts.push({ ...item, severity: 'warning' });
+          }
 
           value += quantity * costPrice;
         });
 
         if (mounted) {
+          // Sort by severity (critical first), then by how low they are
+          const sortedAlerts = alerts.sort((a, b) => {
+            if (a.severity !== b.severity) return a.severity === 'critical' ? -1 : 1;
+            return Number(a.quantity || 0) - Number(b.quantity || 0);
+          });
+
           setStats({ total, lowCount, outCount, value });
+          setAllAlerts(sortedAlerts); // Store all alerts
+          setAlertItems(sortedAlerts.slice(0, 4)); // Display only top 4
           setLastSync(new Date());
         }
       } catch (err) {
@@ -50,6 +70,33 @@ export default function Dashboard({ setIsAuthenticated }) {
 
     loadStats();
     const interval = setInterval(loadStats, 60 * 1000); // refresh every minute
+    return () => { mounted = false; clearInterval(interval); };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadLogs = async () => {
+      setIsLoadingLogs(true);
+      const session = getAuthSession();
+      if (!session?.token) {
+        setIsLoadingLogs(false);
+        return;
+      }
+      try {
+        const res = await getInventoryLogs(session.token, { action: 'STOCK_ADJUST', days: 7, limit: 500 });
+        if (mounted) {
+          setLogs(Array.isArray(res?.data) ? res.data : []);
+        }
+      } catch (err) {
+        console.error('Failed to load usage logs:', err);
+        // Silently fail for logs - don't show toast
+      } finally {
+        if (mounted) setIsLoadingLogs(false);
+      }
+    };
+
+    loadLogs();
+    const interval = setInterval(loadLogs, 60 * 1000); // refresh every minute
     return () => { mounted = false; clearInterval(interval); };
   }, []);
 
@@ -64,7 +111,55 @@ export default function Dashboard({ setIsAuthenticated }) {
 
   return (
     <div className="w-full p-8 bg-[#F7F4F0]">
-          
+      {/* All Alerts Modal */}
+      {showAllAlerts && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-100 p-6 flex justify-between items-start">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-gray-500" /> All Priority Alerts
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">{allAlerts.length} item{allAlerts.length === 1 ? '' : 's'} need attention</p>
+              </div>
+              <button
+                onClick={() => setShowAllAlerts(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3">
+              {allAlerts.length === 0 ? (
+                <div className="p-8 text-center">
+                  <p className="text-lg text-gray-600 font-medium">✓ All inventory levels healthy</p>
+                  <p className="text-sm text-gray-400 mt-1">No items below threshold</p>
+                </div>
+              ) : (
+                allAlerts.map((item) => (
+                  <div key={item.id} className="p-4 border border-gray-100 rounded-xl flex justify-between items-center hover:bg-gray-50 transition-colors">
+                    <div>
+                      <p className="font-bold text-gray-900">{item.name}</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Current: {item.quantity}{item.unit} / Reorder: {item.lowStockThreshold}{item.unit}
+                      </p>
+                    </div>
+                    <span className={`text-sm font-bold px-3 py-1 rounded-full whitespace-nowrap ml-4 ${
+                      item.severity === 'critical'
+                        ? 'bg-red-500 text-white'
+                        : 'border border-gray-300 text-gray-600'
+                    }`}>
+                      {item.severity}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
           {/* Welcome Section (styled like InventoryHeader) */}
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 lg:mb-8">
             <div className="flex items-center gap-3">
@@ -102,50 +197,9 @@ export default function Dashboard({ setIsAuthenticated }) {
 
           {/* Middle Section - Graphs & Alerts */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            
+
             {/* Big Graph - Daily Ingredient Usage */}
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm lg:col-span-2 relative">
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h3 className="font-bold text-gray-900">Daily Ingredient Usage</h3>
-                  <p className="text-xs text-gray-500">Volume of key ingredients consumed past 7 days</p>
-                </div>
-                <div className="flex bg-gray-100 rounded-lg p-1">
-                  <button className="px-3 py-1 bg-white rounded-md text-xs font-bold shadow-sm text-gray-800">Espresso</button>
-                  <button className="px-3 py-1 text-xs font-bold text-gray-500">Milk</button>
-                </div>
-              </div>
-              {/* Fake SVG Graph based on design */}
-              <div className="h-48 w-full relative">
-                {/* Y-Axis labels */}
-                <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-[10px] text-gray-400 pb-5">
-                  <span>24</span><span>18</span><span>12</span><span>6</span><span>0</span>
-                </div>
-                {/* X-Axis labels */}
-                <div className="absolute bottom-0 left-6 right-0 flex justify-between text-[10px] text-gray-400">
-                  <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                </div>
-                {/* Dotted lines */}
-                <div className="absolute left-6 right-0 top-2 bottom-6 flex flex-col justify-between">
-                  <div className="border-b border-dashed border-gray-200 w-full h-0"></div>
-                  <div className="border-b border-dashed border-gray-200 w-full h-0"></div>
-                  <div className="border-b border-dashed border-gray-200 w-full h-0"></div>
-                  <div className="border-b border-dashed border-gray-200 w-full h-0"></div>
-                  <div className="border-b border-gray-300 w-full h-0"></div>
-                </div>
-                {/* SVG Area Chart */}
-                <svg className="absolute left-6 right-0 top-2 bottom-6 w-[calc(100%-1.5rem)] h-[calc(100%-1.5rem)]" preserveAspectRatio="none" viewBox="0 0 100 100">
-                  <defs>
-                    <linearGradient id="gradientBrown" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#3D261D" stopOpacity="0.2" />
-                      <stop offset="100%" stopColor="#3D261D" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <path d="M0,80 C20,85 40,80 60,70 C80,60 90,65 100,68 L100,100 L0,100 Z" fill="url(#gradientBrown)" />
-                  <path d="M0,80 C20,85 40,80 60,70 C80,60 90,65 100,68" fill="none" stroke="#3D261D" strokeWidth="2" />
-                </svg>
-              </div>
-            </div>
+            <DailyUsageGraph logs={logs} isLoading={isLoadingLogs} />
 
             {/* Priority Alerts */}
             <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col">
@@ -156,45 +210,46 @@ export default function Dashboard({ setIsAuthenticated }) {
                   </h3>
                   <p className="text-xs text-gray-500">Items below threshold as of today</p>
                 </div>
-                <a href="#" className="text-xs text-gray-600 hover:text-gray-900">View All</a>
+                <button
+                  onClick={() => setShowAllAlerts(true)}
+                  className="text-xs text-gray-600 hover:text-gray-900"
+                >
+                  View All
+                </button>
               </div>
               
               <div className="flex-1 space-y-3">
-                {/* Alert 1 */}
-                <div className="p-3 border border-gray-100 rounded-xl flex justify-between items-center">
-                  <div>
-                    <p className="font-bold text-sm text-gray-900">Ethiopian Yirgacheffe</p>
-                    <p className="text-[10px] text-gray-500">Current: 1.2kg / Reorder: 2.0kg</p>
+                {alertItems.length === 0 ? (
+                  <div className="p-4 text-center">
+                    <p className="text-sm text-gray-600 font-medium">✓ All inventory levels healthy</p>
+                    <p className="text-[10px] text-gray-400">No items below threshold</p>
                   </div>
-                  <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">critical</span>
-                </div>
-                {/* Alert 2 */}
-                <div className="p-3 border border-gray-100 rounded-xl flex justify-between items-center">
-                  <div>
-                    <p className="font-bold text-sm text-gray-900">Oat Milk (Barista Ed.)</p>
-                    <p className="text-[10px] text-gray-500">Current: 8L / Reorder: 12L</p>
-                  </div>
-                  <span className="border border-gray-300 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-full">warning</span>
-                </div>
-                {/* Alert 3 */}
-                <div className="p-3 border border-gray-100 rounded-xl flex justify-between items-center">
-                  <div>
-                    <p className="font-bold text-sm text-gray-900">Caramel Syrup</p>
-                    <p className="text-[10px] text-gray-500">Current: 2 bottles / Reorder: 5 bottles</p>
-                  </div>
-                  <span className="border border-gray-300 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-full">warning</span>
-                </div>
-                {/* Alert 4 */}
-                <div className="p-3 border border-gray-100 rounded-xl flex justify-between items-center">
-                  <div>
-                    <p className="font-bold text-sm text-gray-900">Paper Cups (12oz)</p>
-                    <p className="text-[10px] text-gray-500">Current: 150 pcs / Reorder: 500 pcs</p>
-                  </div>
-                  <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">critical</span>
-                </div>
+                ) : (
+                  alertItems.map((item) => (
+                    <div key={item.id} className="p-3 border border-gray-100 rounded-xl flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-sm text-gray-900">{item.name}</p>
+                        <p className="text-[10px] text-gray-500">
+                          Current: {item.quantity}{item.unit} / Reorder: {item.lowStockThreshold}{item.unit}
+                        </p>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        item.severity === 'critical'
+                          ? 'bg-red-500 text-white'
+                          : 'border border-gray-300 text-gray-600'
+                      }`}>
+                        {item.severity}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
               <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-                <span className="text-[10px] text-gray-400">Auto-order enabled for 2 items</span>
+                <span className="text-[10px] text-gray-400">
+                  {allAlerts.length === 0
+                    ? 'All items in stock'
+                    : `${allAlerts.length} item${allAlerts.length === 1 ? '' : 's'} need attention`}
+                </span>
                 <ArrowUpRight className="w-3 h-3 text-gray-400" />
               </div>
             </div>
