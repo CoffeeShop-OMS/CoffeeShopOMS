@@ -118,11 +118,6 @@ export default function Sidebar({ setIsAuthenticated, collapsed, setCollapsed, m
                 </div>
 
                 <div className="p-2 space-y-0.5 border-t border-gray-100">
-                    <Link to="/settings" title={collapsed ? 'Settings' : undefined} className={`group flex items-center rounded-lg text-[13.5px] font-medium no-underline text-gray-500 hover:bg-[#3D261D]/10 hover:text-[#3D261D] transition-all duration-200 ${collapsed ? 'justify-center p-2.5' : 'gap-3 px-2.5 py-2.5'}`}>
-                        <Settings className="w-4 h-4 shrink-0 transition-transform duration-200 group-hover:rotate-45 group-hover:text-[#3D261D]" />
-                        {!collapsed && <span className="whitespace-nowrap">Settings</span>}
-                    </Link>
-
                     <button onClick={(e) => { e.preventDefault(); setShowLogoutModal(true); }} title={collapsed ? 'Logout' : undefined} className={`group w-full flex items-center rounded-lg text-[13.5px] font-medium text-red-400 hover:text-red-600 transition-all duration-200 ${collapsed ? 'justify-center p-2.5' : 'gap-3 px-2.5 py-2.5'}`}>
                         <LogOut className="w-4 h-4 shrink-0 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-red-600" />
                         {!collapsed && <span className="whitespace-nowrap">Logout</span>}

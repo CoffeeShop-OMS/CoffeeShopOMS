@@ -11,7 +11,7 @@ import StatCards from '../components/inventory/StatCards';
 import InventoryTable from '../components/inventory/InventoryTable';
 import InventoryMobileList from '../components/inventory/InventoryMobileList';
 import ItemDrawer from '../components/inventory/ItemDrawer';
-import DeleteConfirmModal from '../components/inventory/DeleteConfirmModal';
+import ActionConfirmModal from '../components/inventory/ActionConfirmModal';
 import DuplicateItemModal from '../components/inventory/DuplicateItemModal';
 
 const categoryColors = {
@@ -137,14 +137,13 @@ export default function Inventory() {
   const [sortOrder,       setSortOrder]       = useState('asc');
   const [inventoryItems,  setInventoryItems]  = useState([]);
   const [showFilters,     setShowFilters]     = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [itemToDelete,    setItemToDelete]    = useState(null);
+  const [confirmationAction, setConfirmationAction] = useState(null);
+  const [isConfirmingAction, setIsConfirmingAction] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicateMatchItem, setDuplicateMatchItem] = useState(null);
   const [pendingCreateInput, setPendingCreateInput] = useState(null);
   const [currentPage,     setCurrentPage]     = useState(1);
   const [selectedItems,   setSelectedItems]   = useState(new Set());
-  const [isBulkDeleting,  setIsBulkDeleting]  = useState(false);
   const [recentActivities, setRecentActivities] = useState([]);
   const [recentPage, setRecentPage] = useState(1);
   const itemsPerPage = 10;
@@ -477,10 +476,19 @@ export default function Inventory() {
     loadRecentActivities();
   }, []);
 
+  const buildStockDetails = ({ itemName, category, unit, initialStock, minimumStock, costPerUnit }) => [
+    { label: 'Item', value: itemName },
+    { label: 'Category', value: category },
+    { label: 'Stock', value: `${initialStock} ${unit}`.trim() },
+    { label: 'Minimum', value: `${minimumStock} ${unit}`.trim() },
+    { label: 'Cost', value: `PHP ${Number(costPerUnit).toFixed(2)} / ${unit}` },
+  ];
+
   const closeDrawer = () => {
     setIsDrawerOpen(false);
     setDrawerMode('add');
     setFormError('');
+    setConfirmationAction(null);
     setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '', expirationDate: '' });
     clearDuplicatePrompt();
   };
@@ -510,64 +518,79 @@ export default function Inventory() {
   };
 
   const handleDeleteClick = (item) => {
-    setItemToDelete(item);
-    setShowDeleteModal(true);
+    setConfirmationAction({
+      type: 'archive-single',
+      title: 'Archive Item?',
+      message: `Are you sure you want to archive ${item.name}? This stock will be hidden from active inventory.`,
+      confirmLabel: 'Archive Item',
+      tone: 'warning',
+      icon: Archive,
+      details: [
+        { label: 'Item', value: item.name },
+        { label: 'Category', value: item.cat },
+        { label: 'Current Stock', value: item.stock },
+      ],
+      payload: { item },
+    });
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!itemToDelete) return;
-    const session = getAuthSession();
-    if (!session?.token) { toast.error('Session expired. Please login again.'); return; }
-    try {
-      await deleteInventoryItem(session.token, itemToDelete.id);
-      const today = new Date().toISOString().slice(0, 10);
-      setInventoryItems((prev) =>
-        prev.map((item) =>
-          item.id === itemToDelete.id
-            ? { ...item, isArchived: true, recordStatus: 'deleted', status: 'Archived', lastActivity: today, date: today }
-            : item
-        )
-      );
-      setSelectedItems((prev) => {
-        const next = new Set(prev);
-        next.delete(itemToDelete.id);
-        return next;
-      });
-      setShowDeleteModal(false);
-      addActivity('deleted', itemToDelete.name);
-      setItemToDelete(null);
-      toast.success('Item archived successfully');
-    } catch (error) { toast.error(error?.message || 'Cannot connect to backend. Please check server connection.'); }
+  const archiveItem = async (token, item) => {
+    await deleteInventoryItem(token, item.id);
+    const today = new Date().toISOString().slice(0, 10);
+    setInventoryItems((prev) =>
+      prev.map((inventoryItem) =>
+        inventoryItem.id === item.id
+          ? { ...inventoryItem, isArchived: true, recordStatus: 'deleted', status: 'Archived', lastActivity: today, date: today }
+          : inventoryItem
+      )
+    );
+    setSelectedItems((prev) => {
+      const next = new Set(prev);
+      next.delete(item.id);
+      return next;
+    });
+    addActivity('deleted', item.name);
+    toast.success('Item archived successfully');
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedActiveCount === 0) return;
-    if (!window.confirm(`Archive ${selectedActiveCount} item(s)? These items will be hidden from inventory.`)) return;
+    const itemsToArchive = inventoryItems.filter((item) => selectedItems.has(item.id) && !item.isArchived);
+    if (itemsToArchive.length === 0) return;
 
-    const session = getAuthSession();
-    if (!session?.token) { toast.error('Session expired. Please login again.'); return; }
-    setIsBulkDeleting(true);
-    try {
-      const itemIds = inventoryItems
-        .filter((item) => selectedItems.has(item.id) && !item.isArchived)
-        .map((item) => item.id);
-      await Promise.all(itemIds.map((id) => deleteInventoryItem(session.token, id)));
-      const today = new Date().toISOString().slice(0, 10);
-      setInventoryItems((prev) =>
-        prev.map((item) =>
-          itemIds.includes(item.id)
-            ? { ...item, isArchived: true, recordStatus: 'deleted', status: 'Archived', lastActivity: today, date: today }
-            : item
-        )
-      );
-      setSelectedItems(new Set());
-      setCurrentPage(1);
-      inventoryItems
-        .filter((item) => itemIds.includes(item.id))
-        .forEach((item) => addActivity('deleted', item.name));
-      toast.success(`${itemIds.length} item(s) archived successfully`);
-    } catch (error) { toast.error(error?.message || 'Failed to archive items'); }
-    finally { setIsBulkDeleting(false); }
+    const previewNames = itemsToArchive.slice(0, 3).map((item) => item.name).join(', ');
+    const remainingCount = itemsToArchive.length - Math.min(itemsToArchive.length, 3);
+
+    setConfirmationAction({
+      type: 'archive-bulk',
+      title: `Archive ${itemsToArchive.length} Item${itemsToArchive.length > 1 ? 's' : ''}?`,
+      message: `These selected stock items will be hidden from active inventory.${remainingCount > 0 ? ` ${remainingCount} more item(s) are included.` : ''}`,
+      confirmLabel: itemsToArchive.length > 1 ? 'Archive Items' : 'Archive Item',
+      tone: 'warning',
+      icon: Archive,
+      details: [
+        { label: 'Selected Items', value: String(itemsToArchive.length) },
+        { label: 'Preview', value: remainingCount > 0 ? `${previewNames} +${remainingCount} more` : previewNames },
+      ],
+      payload: { itemIds: itemsToArchive.map((item) => item.id) },
+    });
+  };
+
+  const archiveItems = async (token, itemIds) => {
+    const itemsToArchive = inventoryItems.filter((item) => itemIds.includes(item.id));
+    await Promise.all(itemIds.map((id) => deleteInventoryItem(token, id)));
+    const today = new Date().toISOString().slice(0, 10);
+    setInventoryItems((prev) =>
+      prev.map((item) =>
+        itemIds.includes(item.id)
+          ? { ...item, isArchived: true, recordStatus: 'deleted', status: 'Archived', lastActivity: today, date: today }
+          : item
+      )
+    );
+    setSelectedItems(new Set());
+    setCurrentPage(1);
+    itemsToArchive.forEach((item) => addActivity('deleted', item.name));
+    toast.success(`${itemIds.length} item(s) archived successfully`);
   };
 
   function clearDuplicatePrompt() {
@@ -602,30 +625,21 @@ export default function Inventory() {
     closeDrawer();
   };
 
-  const handleDuplicateAddItem = async () => {
+  const handleDuplicateAddItem = () => {
     if (!pendingCreateInput) return clearDuplicatePrompt();
 
-    const session = getAuthSession();
-    if (!session?.token) {
-      clearDuplicatePrompt();
-      toast.error('Session expired. Please login again.');
-      return;
-    }
-
-    try {
-      await submitCreateItem({
-        token: session.token,
-        ...pendingCreateInput,
-      });
-    } catch (error) {
-      if (error?.status === 409) {
-        toast.error(error?.message || 'An item with this SKU already exists.');
-      } else {
-        toast.error(extractApiErrorMessage(error, 'Cannot connect to backend. Please check server connection.'));
-      }
-    } finally {
-      clearDuplicatePrompt();
-    }
+    const createInput = pendingCreateInput;
+    clearDuplicatePrompt();
+    setConfirmationAction({
+      type: 'create',
+      title: 'Add this stock item?',
+      message: `A similar active item already exists, but you can still add ${createInput.itemName} as a separate stock item if that is intentional.`,
+      confirmLabel: 'Add Item',
+      tone: 'primary',
+      icon: PlusCircle,
+      details: buildStockDetails(createInput),
+      payload: createInput,
+    });
   };
 
   const handleDuplicateUseExisting = () => {
@@ -637,108 +651,146 @@ export default function Inventory() {
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setFormError('');
-  const session = getAuthSession();
-  if (!session?.token) {
-    setFormError('Session expired. Please login again.');
-    return;
-  }
-
-  const itemName = newItem.itemName.trim();
-  const costPerUnit = parseFloat(newItem.costPerUnit);
-  const minimumStock = parseInt(newItem.minimumStock, 10);
-  const initialStock = parseInt(newItem.initialStock, 10);
-
-  // Validation checks
-  if (!itemName) {
-    toast.error('Item name is required.');
-    return;
-  }
-  if (itemName.length < 2) {
-    toast.error('Item name must be at least 2 characters.');
-    return;
-  }
-  if (itemName.length > 100) {
-    toast.error('Item name cannot exceed 100 characters.');
-    return;
-  }
-  if (!newItem.costPerUnit || isNaN(costPerUnit)) {
-    toast.error('Cost per unit is required and must be a valid number.');
-    return;
-  }
-  if (costPerUnit < 0) {
-    toast.error('Cost per unit cannot be negative.');
-    return;
-  }
-  if (costPerUnit > 999999) {
-    toast.error('Cost per unit is too high.');
-    return;
-  }
-  if (!newItem.minimumStock || isNaN(minimumStock)) {
-    toast.error('Minimum stock is required and must be a valid number.');
-    return;
-  }
-  if (minimumStock < 0) {
-    toast.error('Minimum stock cannot be negative.');
-    return;
-  }
-  if (!newItem.category) {
-    toast.error('Please select a category.');
-    return;
-  }
-  if (!newItem.unit) {
-    toast.error('Please select a unit.');
-    return;
-  }
-  if (drawerMode === 'add') {
-    if ((newItem.initialStock === '' || newItem.initialStock === undefined) || Number.isNaN(initialStock)) {
-      toast.error('Stock level is required and must be a whole number.');
+    e.preventDefault();
+    setFormError('');
+    const session = getAuthSession();
+    if (!session?.token) {
+      setFormError('Session expired. Please login again.');
       return;
     }
-    if (initialStock < 0) {
-      toast.error('Stock level cannot be negative.');
-      return;
-    }
-  }
-  if (drawerMode === 'edit') {
-    if ((newItem.initialStock === '' || newItem.initialStock === undefined) || Number.isNaN(initialStock)) {
-      toast.error('Current stock is required and must be a whole number.');
-      return;
-    }
-    if (initialStock < 0) {
-      toast.error('Current stock cannot be negative.');
-      return;
-    }
-  }
 
-  // Check for duplicate active inventory names before creating a new item
-  if (drawerMode === 'add') {
-    const normalizedNewName = normalizeNameForComparison(itemName);
-    const duplicateItem = inventoryItems.find(
-      (item) => !item.isArchived && normalizeNameForComparison(item.name) === normalizedNewName
-    );
+    const itemName = newItem.itemName.trim();
+    const costPerUnit = parseFloat(newItem.costPerUnit);
+    const minimumStock = parseInt(newItem.minimumStock, 10);
+    const initialStock = parseInt(newItem.initialStock, 10);
 
-    if (duplicateItem) {
-      setDuplicateMatchItem(duplicateItem);
-      setPendingCreateInput({
-        itemName,
-        category: newItem.category,
-        unit: newItem.unit,
-        initialStock,
-        minimumStock,
-        costPerUnit,
-        expirationDate: newItem.expirationDate,
-      });
-      setShowDuplicateModal(true);
+    if (!itemName) {
+      toast.error('Item name is required.');
       return;
     }
-  }
-
-  try {
+    if (itemName.length < 2) {
+      toast.error('Item name must be at least 2 characters.');
+      return;
+    }
+    if (itemName.length > 100) {
+      toast.error('Item name cannot exceed 100 characters.');
+      return;
+    }
+    if (!newItem.costPerUnit || isNaN(costPerUnit)) {
+      toast.error('Cost per unit is required and must be a valid number.');
+      return;
+    }
+    if (costPerUnit < 0) {
+      toast.error('Cost per unit cannot be negative.');
+      return;
+    }
+    if (costPerUnit > 999999) {
+      toast.error('Cost per unit is too high.');
+      return;
+    }
+    if (!newItem.minimumStock || isNaN(minimumStock)) {
+      toast.error('Minimum stock is required and must be a valid number.');
+      return;
+    }
+    if (minimumStock < 0) {
+      toast.error('Minimum stock cannot be negative.');
+      return;
+    }
+    if (!newItem.category) {
+      toast.error('Please select a category.');
+      return;
+    }
+    if (!newItem.unit) {
+      toast.error('Please select a unit.');
+      return;
+    }
     if (drawerMode === 'add') {
-      await submitCreateItem({
-        token: session.token,
+      if ((newItem.initialStock === '' || newItem.initialStock === undefined) || Number.isNaN(initialStock)) {
+        toast.error('Stock level is required and must be a whole number.');
+        return;
+      }
+      if (initialStock < 0) {
+        toast.error('Stock level cannot be negative.');
+        return;
+      }
+    }
+    if (drawerMode === 'edit') {
+      if ((newItem.initialStock === '' || newItem.initialStock === undefined) || Number.isNaN(initialStock)) {
+        toast.error('Current stock is required and must be a whole number.');
+        return;
+      }
+      if (initialStock < 0) {
+        toast.error('Current stock cannot be negative.');
+        return;
+      }
+    }
+
+    if (drawerMode === 'add') {
+      const normalizedNewName = normalizeNameForComparison(itemName);
+      const duplicateItem = inventoryItems.find(
+        (item) => !item.isArchived && normalizeNameForComparison(item.name) === normalizedNewName
+      );
+
+      if (duplicateItem) {
+        setDuplicateMatchItem(duplicateItem);
+        setPendingCreateInput({
+          itemName,
+          category: newItem.category,
+          unit: newItem.unit,
+          initialStock,
+          minimumStock,
+          costPerUnit,
+          expirationDate: newItem.expirationDate,
+        });
+        setShowDuplicateModal(true);
+        return;
+      }
+
+      setConfirmationAction({
+        type: 'create',
+        title: 'Add this stock item?',
+        message: `Are you sure you want to add ${itemName} to inventory?`,
+        confirmLabel: 'Add Item',
+        tone: 'primary',
+        icon: PlusCircle,
+        details: buildStockDetails({
+          itemName,
+          category: newItem.category,
+          unit: newItem.unit,
+          initialStock,
+          minimumStock,
+          costPerUnit,
+        }),
+        payload: {
+          itemName,
+          category: newItem.category,
+          unit: newItem.unit,
+          initialStock,
+          minimumStock,
+          costPerUnit,
+          expirationDate: newItem.expirationDate,
+        },
+      });
+      return;
+    }
+
+    setConfirmationAction({
+      type: 'update',
+      title: 'Save stock changes?',
+      message: `Apply these updates to ${itemName}? The current stock details will be replaced with the values below.`,
+      confirmLabel: 'Save Changes',
+      tone: 'primary',
+      icon: Edit2,
+      details: buildStockDetails({
+        itemName,
+        category: newItem.category,
+        unit: newItem.unit,
+        initialStock,
+        minimumStock,
+        costPerUnit,
+      }),
+      payload: {
+        id: newItem.id,
         itemName,
         category: newItem.category,
         unit: newItem.unit,
@@ -746,36 +798,74 @@ export default function Inventory() {
         minimumStock,
         costPerUnit,
         expirationDate: newItem.expirationDate,
-      });
-    } else {
-      // Update existing item
-      const result = await updateInventoryItem(session.token, newItem.id, {
-        name: itemName,
-        category: categoryToBackend[newItem.category] || 'other',
-        quantity: initialStock,
-        unit: newItem.unit,
-        lowStockThreshold: minimumStock,
-        costPrice: costPerUnit,
-        expirationDate: newItem.expirationDate || null,
-      });
+      },
+    });
+  };
 
-      if (result?.data) {
-        setInventoryItems((prev) =>
-          prev.map((item) => (item.id === newItem.id ? mapItemToUi(result.data) : item))
-        );
-        addActivity('updated', itemName);
+  const handleConfirmAction = async () => {
+    if (!confirmationAction) return;
+
+    const action = confirmationAction;
+    const session = getAuthSession();
+    if (!session?.token) {
+      toast.error('Session expired. Please login again.');
+      return;
+    }
+
+    setIsConfirmingAction(true);
+    try {
+      if (action.type === 'create') {
+        await submitCreateItem({
+          token: session.token,
+          ...action.payload,
+        });
+        setConfirmationAction(null);
+        return;
       }
-      toast.success('Item updated successfully');
-      closeDrawer();
+
+      if (action.type === 'update') {
+        const result = await updateInventoryItem(session.token, action.payload.id, {
+          name: action.payload.itemName,
+          category: categoryToBackend[action.payload.category] || 'other',
+          quantity: action.payload.initialStock,
+          unit: action.payload.unit,
+          lowStockThreshold: action.payload.minimumStock,
+          costPrice: action.payload.costPerUnit,
+          expirationDate: action.payload.expirationDate || null,
+        });
+
+        if (result?.data) {
+          setInventoryItems((prev) =>
+            prev.map((item) => (item.id === action.payload.id ? mapItemToUi(result.data) : item))
+          );
+          addActivity('updated', action.payload.itemName);
+        }
+        toast.success('Item updated successfully');
+        setConfirmationAction(null);
+        closeDrawer();
+        return;
+      }
+
+      if (action.type === 'archive-single') {
+        await archiveItem(session.token, action.payload.item);
+        setConfirmationAction(null);
+        return;
+      }
+
+      if (action.type === 'archive-bulk') {
+        await archiveItems(session.token, action.payload.itemIds);
+        setConfirmationAction(null);
+      }
+    } catch (error) {
+      if (error?.status === 409) {
+        toast.error(error?.message || 'An item with this SKU already exists.');
+      } else {
+        toast.error(extractApiErrorMessage(error, 'Cannot connect to backend. Please check server connection.'));
+      }
+    } finally {
+      setIsConfirmingAction(false);
     }
-  } catch (error) {
-    if (error?.status === 409) {
-      toast.error(error?.message || 'An item with this SKU already exists.');
-    } else {
-      toast.error(extractApiErrorMessage(error, 'Cannot connect to backend. Please check server connection.'));
-    }
-  }
-};
+  };
 
   return (
     <div className="min-h-screen bg-[#F7F4F0] w-full px-4 sm:px-6 lg:px-10 py-6 lg:py-9">
@@ -807,8 +897,7 @@ export default function Inventory() {
               {selectedActiveCount > 0 && (
                 <button
                   onClick={handleBulkDelete}
-                  disabled={isBulkDeleting}
-                  className="flex items-center gap-1.5 px-3 py-2 border border-amber-200 rounded-xl bg-amber-50 text-amber-600 text-sm font-medium hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2 border border-amber-200 rounded-xl bg-amber-50 text-amber-600 text-sm font-medium hover:bg-amber-100 transition-all"
                 >
                   <span>Archive {selectedActiveCount}</span>
                 </button>
@@ -1091,11 +1180,19 @@ export default function Inventory() {
         btnBrown={btnBrown}
       />
 
-      <DeleteConfirmModal
-        isOpen={showDeleteModal}
-        item={itemToDelete}
-        onCancel={() => { setShowDeleteModal(false); setItemToDelete(null); }}
-        onConfirm={handleDeleteConfirm}
+      <ActionConfirmModal
+        isOpen={Boolean(confirmationAction)}
+        title={confirmationAction?.title}
+        message={confirmationAction?.message}
+        details={confirmationAction?.details}
+        confirmLabel={confirmationAction?.confirmLabel}
+        tone={confirmationAction?.tone}
+        icon={confirmationAction?.icon}
+        isBusy={isConfirmingAction}
+        onCancel={() => {
+          if (!isConfirmingAction) setConfirmationAction(null);
+        }}
+        onConfirm={handleConfirmAction}
       />
 
       <DuplicateItemModal

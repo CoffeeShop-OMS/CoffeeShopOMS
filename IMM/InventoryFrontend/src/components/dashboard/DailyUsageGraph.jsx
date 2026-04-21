@@ -27,8 +27,18 @@ const getMonthLabel = (date) => {
   return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 };
 
+const getQuarterLabel = (date) => {
+  const quarter = Math.floor(date.getMonth() / 3) + 1;
+  return `Q${quarter} ${date.getFullYear()}`;
+};
+
 const getYearLabel = (date) => {
   return date.getFullYear().toString();
+};
+
+const getQuarterStartKey = (date) => {
+  const quarterStartMonth = Math.floor(date.getMonth() / 3) * 3;
+  return `${date.getFullYear()}-${String(quarterStartMonth + 1).padStart(2, '0')}-01`;
 };
 
 const getLast5Years = () => {
@@ -79,6 +89,22 @@ const getLast12Months = () => {
   return months;
 };
 
+const getLast4Quarters = () => {
+  const quarters = [];
+  for (let i = 3; i >= 0; i--) {
+    const date = new Date();
+    date.setMonth(date.getMonth() - (i * 3), 1);
+    const quarterStartMonth = Math.floor(date.getMonth() / 3) * 3;
+    const quarterStart = new Date(date.getFullYear(), quarterStartMonth, 1);
+
+    quarters.push({
+      date: getQuarterStartKey(quarterStart),
+      label: getQuarterLabel(quarterStart),
+    });
+  }
+  return quarters;
+};
+
 const aggregateUsage = (logs, periods, periodType) => {
   if (!logs || logs.length === 0) {
     return periods.map((p) => ({ ...p, usage: 0 }));
@@ -122,6 +148,9 @@ const aggregateUsage = (logs, periods, periodType) => {
           case 'monthly':
             periodKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
             break;
+          case 'quarterly':
+            periodKey = getQuarterStartKey(date);
+            break;
           case 'yearly':
             periodKey = `${date.getFullYear()}-01-01`;
             break;
@@ -146,6 +175,21 @@ const aggregateUsage = (logs, periods, periodType) => {
 export default function DailyUsageGraph({ logs = [], isLoading = false }) {
   const [selectedPeriod, setSelectedPeriod] = useState('daily');
 
+  const getYAxisStep = () => {
+    switch (selectedPeriod) {
+      case 'weekly':
+        return 20;
+      case 'monthly':
+        return 50;
+      case 'quarterly':
+        return 100;
+      case 'yearly':
+        return 200;
+      default:
+        return 5;
+    }
+  };
+
   const getPeriods = () => {
     switch (selectedPeriod) {
       case 'daily':
@@ -154,6 +198,8 @@ export default function DailyUsageGraph({ logs = [], isLoading = false }) {
         return getLast4Weeks();
       case 'monthly':
         return getLast12Months();
+      case 'quarterly':
+        return getLast4Quarters();
       case 'yearly':
         return getLast5Years();
       default:
@@ -164,30 +210,34 @@ export default function DailyUsageGraph({ logs = [], isLoading = false }) {
   const getPeriodTitle = () => {
     switch (selectedPeriod) {
       case 'daily':
-        return 'Daily Ingredient Usage';
+        return 'Daily Stock Usage';
       case 'weekly':
-        return 'Weekly Ingredient Usage';
+        return 'Weekly Stock Usage';
       case 'monthly':
-        return 'Monthly Ingredient Usage';
+        return 'Monthly Stock Usage';
+      case 'quarterly':
+        return 'Quarterly Stock Usage';
       case 'yearly':
-        return 'Yearly Ingredient Usage';
+        return 'Yearly Stock Usage';
       default:
-        return 'Daily Ingredient Usage';
+        return 'Daily Stock Usage';
     }
   };
 
   const getPeriodDescription = () => {
     switch (selectedPeriod) {
       case 'daily':
-        return 'Volume of all ingredients consumed past 7 days';
+        return 'Volume of all stock consumed past 7 days';
       case 'weekly':
-        return 'Volume of all ingredients consumed past 4 weeks';
+        return 'Volume of all stock consumed past 4 weeks';
       case 'monthly':
-        return 'Volume of all ingredients consumed past 12 months';
+        return 'Volume of all stock consumed past 12 months';
+      case 'quarterly':
+        return 'Volume of all stock consumed past 4 quarters';
       case 'yearly':
-        return 'Volume of all ingredients consumed past 5 years';
+        return 'Volume of all stock consumed past 5 years';
       default:
-        return 'Volume of all ingredients consumed past 7 days';
+        return 'Volume of all stock consumed past 7 days';
     }
   };
 
@@ -244,6 +294,16 @@ export default function DailyUsageGraph({ logs = [], isLoading = false }) {
             Monthly
           </button>
           <button
+            onClick={() => setSelectedPeriod('quarterly')}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+              selectedPeriod === 'quarterly'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Quarterly
+          </button>
+          <button
             onClick={() => setSelectedPeriod('yearly')}
             className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
               selectedPeriod === 'yearly'
@@ -256,7 +316,11 @@ export default function DailyUsageGraph({ logs = [], isLoading = false }) {
         </div>
       </div>
 
-      <div className="flex-1 w-full min-h-0">
+      <div
+        className={`w-full ${
+          selectedPeriod === 'monthly' ? 'h-[360px] sm:h-[400px]' : 'h-[300px] sm:h-[340px]'
+        }`}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={chartData}
@@ -287,7 +351,7 @@ export default function DailyUsageGraph({ logs = [], isLoading = false }) {
               tick={{ fontSize: 12, fill: '#9ca3af' }}
               axisLine={false}
               tickLine={false}
-              domain={[0, Math.ceil(maxUsage / (selectedPeriod === 'yearly' ? 200 : selectedPeriod === 'monthly' ? 50 : selectedPeriod === 'weekly' ? 20 : 5)) * (selectedPeriod === 'yearly' ? 200 : selectedPeriod === 'monthly' ? 50 : selectedPeriod === 'weekly' ? 20 : 5)]}
+              domain={[0, Math.ceil(maxUsage / getYAxisStep()) * getYAxisStep()]}
             />
             <Tooltip
               contentStyle={{
@@ -305,6 +369,8 @@ export default function DailyUsageGraph({ logs = [], isLoading = false }) {
                     return `Week: ${label}`;
                   case 'monthly':
                     return `Month: ${label}`;
+                  case 'quarterly':
+                    return `Quarter: ${label}`;
                   case 'yearly':
                     return `Year: ${label}`;
                   default:
