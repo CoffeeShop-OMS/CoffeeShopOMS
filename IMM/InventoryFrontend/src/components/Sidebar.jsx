@@ -7,7 +7,6 @@ import ConfirmModal from './ConfirmModal';
 const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/inventory', icon: Package, label: 'Inventory' },
-    { to: '/suppliers', icon: Truck, label: 'Suppliers' },
     { to: '/reports', icon: BarChart2, label: 'Reports' },
 ];
 

@@ -9,7 +9,9 @@ export default function StatCards({ stats, cards: overrideCards, onCardClick }) 
   ];
 
   const cards = overrideCards && overrideCards.length ? overrideCards : defaultCards;
-  const gridCols = cards.length === 6
+  const gridCols = cards.length >= 7
+    ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-7'
+    : cards.length === 6
     ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6'
     : cards.length >= 5
     ? 'grid-cols-2 lg:grid-cols-5'

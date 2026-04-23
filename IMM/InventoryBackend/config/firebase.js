@@ -2,7 +2,20 @@ const admin = require("firebase-admin");
 const fs = require("fs");
 const path = require("path");
 
-const normalizePrivateKey = (value = "") => value.replace(/\\n/g, "\n");
+const normalizePrivateKey = (value = "") => {
+  if (typeof value !== "string") return value;
+
+  let normalized = value.trim();
+
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    normalized = normalized.slice(1, -1);
+  }
+
+  return normalized.replace(/\\n/g, "\n").replace(/\r\n/g, "\n");
+};
 
 const normalizeServiceAccount = (serviceAccount = {}) => {
   const projectId = serviceAccount.projectId || serviceAccount.project_id;

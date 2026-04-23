@@ -119,6 +119,10 @@ const createItemValidator = [
     .trim()
     .isLength({ max: 100 })
     .withMessage("Supplier must be 100 characters or fewer"),
+  body("expirationDate")
+    .optional({ values: "falsy" })
+    .isISO8601()
+    .withMessage("Expiration date must be a valid date"),
   validate,
 ];
 
@@ -139,6 +143,10 @@ const updateItemValidator = [
     .trim()
     .isLength({ max: 100 })
     .withMessage("Supplier must be 100 characters or fewer"),
+  body("expirationDate")
+    .optional({ values: "falsy" })
+    .isISO8601()
+    .withMessage("Expiration date must be a valid date"),
   validate,
 ];
 
@@ -147,6 +155,10 @@ const adjustStockValidator = [
   body("adjustment")
     .isInt()
     .withMessage("Adjustment must be an integer (positive to add, negative to deduct)"),
+  body("expirationDate")
+    .optional({ values: "falsy" })
+    .isISO8601()
+    .withMessage("Expiration date must be a valid date"),
   body("reason")
     .trim()
     .notEmpty()

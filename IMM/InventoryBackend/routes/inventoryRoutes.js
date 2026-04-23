@@ -13,6 +13,7 @@ const {
   getItemById,
   updateItem,
   deleteItem,
+  restoreItem,
   adjustStock,
   getLowStockItems,
   getItemLogs,
@@ -31,6 +32,7 @@ router.get("/", getAllItems);
 router.post("/", requireRole(["admin", "manager"]), createItemValidator, createItem);
 router.get("/:id", idParamValidator, getItemById);
 router.patch("/:id", requireRole(["admin", "manager"]), updateItemValidator, updateItem);
+router.patch("/:id/restore", requireRole("admin"), idParamValidator, restoreItem);
 router.delete("/:id", requireRole("admin"), idParamValidator, deleteItem);
 
 // Stock operations

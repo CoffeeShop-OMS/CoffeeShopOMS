@@ -88,8 +88,41 @@ export const deleteInventoryItem = (token, itemId) =>
     headers: authHeader(token),
   });
 
+export const restoreInventoryItem = (token, itemId) =>
+  request(`/inventory/${itemId}/restore`, {
+    method: "PATCH",
+    headers: authHeader(token),
+  });
+
+export const adjustInventoryStock = (token, itemId, payload) =>
+  request(`/inventory/${itemId}/adjust`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader(token),
+    },
+    body: JSON.stringify(payload),
+  });
+
 export const getInventoryLogs = (token, params = {}) =>
   request(`/inventory/logs${toQueryString(params)}`, {
+    headers: authHeader(token),
+  });
+
+export const getNotifications = (token, params = {}) =>
+  request(`/notifications${toQueryString(params)}`, {
+    headers: authHeader(token),
+  });
+
+export const markNotificationRead = (token, notificationId) =>
+  request(`/notifications/${notificationId}/read`, {
+    method: "PATCH",
+    headers: authHeader(token),
+  });
+
+export const markAllNotificationsRead = (token) =>
+  request("/notifications/read-all", {
+    method: "PATCH",
     headers: authHeader(token),
   });
 

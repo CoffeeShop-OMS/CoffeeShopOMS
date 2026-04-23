@@ -13,15 +13,15 @@ export default function ItemDrawer({
   btnBrown,
 }) {
   const title = isEditMode ? 'Update Item' : 'Add New Item';
-  const subtitle = isEditMode ? 'Modify the details for this inventory item.' : 'Fill in the details for the new inventory item.';
+  const subtitle = isEditMode
+    ? 'Modify the details for this inventory item. Manual stock or expiration edits will reset the FIFO batch history for this item.'
+    : 'Fill in the details for the new inventory item.';
   const submitText = isEditMode ? 'Update Item' : 'Save Item';
   const fields = isEditMode
     ? [
         { label: 'Item Name', field: 'itemName', type: 'text', placeholder: 'e.g. Arabica Beans' },
-        { label: 'Current Stock', field: 'initialStock', type: 'number', placeholder: 'e.g. 10' },
         { label: 'Cost per Unit', field: 'costPerUnit', type: 'number', placeholder: 'e.g. 12.50' },
         { label: 'Minimum Stock', field: 'minimumStock', type: 'number', placeholder: 'e.g. 50' },
-        { label: 'Expiration Date', field: 'expirationDate', type: 'date', placeholder: '' },
       ]
     : [
         { label: 'Item Name', field: 'itemName', type: 'text', placeholder: 'e.g. Arabica Beans' },

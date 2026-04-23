@@ -1,3 +1,5 @@
+import { Archive, ArrowDown, ArrowUp, Edit2, RotateCcw } from 'lucide-react';
+
 const categoryColors = {
   Beans: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-400', border: 'border-amber-200' },
   Milk: { bg: 'bg-sky-50', text: 'text-sky-700', dot: 'bg-sky-400', border: 'border-sky-200' },
@@ -15,6 +17,8 @@ export default function InventoryTable({
   items,
   onUpdate,
   onDelete,
+  onRestore,
+  onQuickAdjust,
   selectedItems = new Set(),
   onSelectedChange = () => {},
 }) {
@@ -77,13 +81,19 @@ export default function InventoryTable({
                 <tr
                   key={item.id}
                   className={`border-b border-[#F5F2EE] last:border-0 transition-colors duration-100
-                    ${isSelected ? 'bg-[#3D261D]/5' : item.isArchived ? 'bg-slate-50/80 hover:bg-slate-50' : item.isOut ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-[#FAF8F5]'}`}
+                    ${isSelected ? 'bg-[#3D261D]/5' : item.isArchived ? 'bg-slate-50/80 hover:bg-slate-50' : item.hasExpiredStock ? 'bg-rose-50/60 hover:bg-rose-50' : item.isOut ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-[#FAF8F5]'}`}
                 >
                   <td className="text-center px-4 py-3.5">
                     <input type="checkbox" checked={isSelected} disabled={item.isArchived} onChange={() => handleSelectItem(item.id)} className="accent-[#3D261D] disabled:opacity-40" />
                   </td>
                   <td className="px-4 py-3.5">
                     <p className="text-sm font-semibold text-[#1C100A]">{item.name}</p>
+                    {item.hasExpiredStock && (
+                      <p className="mt-1 text-[11px] font-medium text-rose-600">
+                        {item.expiredQuantity} {item.unit} expired
+                        {item.expirationDate ? ` - since ${item.expirationDate}` : ''}
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-3.5">
                     <p className="text-sm font-mono text-[#7A6355]">{item.sku}</p>
@@ -95,7 +105,7 @@ export default function InventoryTable({
                     </span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <p className={`text-sm font-bold ${item.isArchived ? 'text-slate-500' : item.isOut ? 'text-red-500' : item.isLow ? 'text-amber-600' : 'text-[#1C100A]'}`}>
+                    <p className={`text-sm font-bold ${item.isArchived ? 'text-slate-500' : item.hasExpiredStock ? 'text-rose-700' : item.isOut ? 'text-red-500' : item.isLow ? 'text-amber-600' : 'text-[#1C100A]'}`}>
                       {item.stock}
                     </p>
                   </td>
@@ -109,21 +119,82 @@ export default function InventoryTable({
                   <td className="px-4 py-3.5 text-sm text-[#7A6355] whitespace-nowrap">{item.dateAdded}</td>
                   <td className="px-4 py-3.5 text-sm text-[#7A6355] whitespace-nowrap">{item.lastActivity}</td>
                   <td className="px-4 py-3.5">
-                    <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide whitespace-nowrap
-                      ${item.isArchived ? 'bg-slate-100 text-slate-600 border border-slate-200'
-                        : item.isOut ? 'bg-red-50 text-red-600 border border-red-200'
-                        : item.isLow ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
-                      {item.status}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide whitespace-nowrap
+                        ${item.isArchived ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                          : item.isOut ? 'bg-red-50 text-red-600 border border-red-200'
+                          : item.isLow ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                        {item.status}
+                      </span>
+                      {item.hasExpiredStock && !item.isArchived && (
+                        <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide whitespace-nowrap bg-rose-50 text-rose-700 border border-rose-200">
+                          Expired batch
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3.5">
                     {item.isArchived ? (
-                      <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200">Archived</span>
+                      typeof onRestore === 'function' ? (
+                        <div className="flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => onRestore(item)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold text-sky-700 transition-all duration-150 hover:bg-sky-100"
+                            aria-label={`Restore ${item.name}`}
+                            title="Restore item"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Restore
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200">Archived</span>
+                      )
                     ) : (
                       <div className="flex gap-1.5 justify-center">
-                        <button onClick={() => onUpdate(item)} className="px-3 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all duration-150">Update</button>
-                        <button onClick={() => onDelete(item)} className="px-3 py-1.5 text-[11px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all duration-150">Archive</button>
+                        {typeof onQuickAdjust === 'function' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => onQuickAdjust(item, 1)}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition-all duration-150 hover:bg-emerald-100"
+                              aria-label={`Add stock to ${item.name}`}
+                              title="Add stock"
+                            >
+                              <ArrowUp className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onQuickAdjust(item, -1)}
+                              disabled={item.quantity <= 0}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition-all duration-150 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              aria-label={`Remove stock from ${item.name}`}
+                              title="Remove stock"
+                            >
+                              <ArrowDown className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onUpdate(item)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition-all duration-150 hover:bg-emerald-100"
+                          aria-label={`Update ${item.name}`}
+                          title="Update item"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(item)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-600 transition-all duration-150 hover:bg-amber-100"
+                          aria-label={`Archive ${item.name}`}
+                          title="Archive item"
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     )}
                   </td>
