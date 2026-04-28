@@ -63,7 +63,7 @@ const getBatchSummary = (entry) => {
     const batchQuantity = Number(entry.addedBatch?.quantity || entry.absoluteAdjustment || 0);
     const batchExpiration = formatExpiration(entry.addedBatch?.expirationDate || entry.expirationDate);
     return batchExpiration
-      ? `Added batch ${formatQuantity(batchQuantity, entry.unit)} · Expires ${batchExpiration}`
+      ? `Added batch ${formatQuantity(batchQuantity, entry.unit)} - Expires ${batchExpiration}`
       : `Added batch ${formatQuantity(batchQuantity, entry.unit)}`;
   }
 
@@ -73,11 +73,11 @@ const getBatchSummary = (entry) => {
       .filter(Boolean);
     const batchLabel = `${entry.consumedBatches.length} batch${entry.consumedBatches.length === 1 ? '' : 'es'}`;
     return expirations.length > 0
-      ? `FIFO used ${batchLabel} · ${expirations.join(', ')}`
-      : `FIFO used ${batchLabel}`;
+      ? `Used oldest available stock from ${batchLabel} - ${expirations.join(', ')}`
+      : `Used oldest available stock from ${batchLabel}`;
   }
 
-  return 'FIFO stock movement recorded';
+  return 'Stock movement recorded from the available batches';
 };
 
 const summaryCardBase =
@@ -137,7 +137,7 @@ export default function InventoryHistoryPanel({
         <div>
           <h3 className="text-sm font-bold text-[#1C100A]">Inventory History</h3>
           <p className="text-xs text-[#9E8A7A] mt-1">
-            Complete log of stock movement and expired-item events, including FIFO batch details.
+            Complete log of stock movement and expired-item events, including batch and expiry details.
           </p>
         </div>
         <button
@@ -228,7 +228,7 @@ export default function InventoryHistoryPanel({
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-[#F0EDE8] bg-[#FDFCFB]">
-                  {['When', 'Item', 'Movement', 'Quantity', 'Stock After', 'Reason', 'FIFO / Batch', 'Recorded By'].map((heading) => (
+                  {['When', 'Item', 'Movement', 'Quantity', 'Stock After', 'Reason', 'Batch Details', 'Recorded By'].map((heading) => (
                     <th
                       key={heading}
                       className="px-4 sm:px-6 py-3 text-left text-[10px] font-bold text-[#A89080] uppercase tracking-widest whitespace-nowrap"
@@ -362,7 +362,7 @@ export default function InventoryHistoryPanel({
                   </div>
 
                   <div className="rounded-xl border border-[#EEE5DB] bg-[#FCFAF8] px-3.5 py-3">
-                    <p className="text-[10px] uppercase tracking-widest text-[#A89080] font-bold">FIFO / Batch</p>
+                    <p className="text-[10px] uppercase tracking-widest text-[#A89080] font-bold">Batch Details</p>
                     <p className="mt-1 text-sm text-[#4B3429]">{getBatchSummary(entry)}</p>
                     {entry.expirationDate ? (
                       <p className="text-xs text-[#9E8A7A] mt-1">Current expiry: {formatExpiration(entry.expirationDate)}</p>

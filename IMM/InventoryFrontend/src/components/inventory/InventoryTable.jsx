@@ -1,4 +1,7 @@
-import { Archive, ArrowDown, ArrowUp, Edit2, RotateCcw } from 'lucide-react';
+import { Archive, ArrowDown, ArrowUp, Edit2, RotateCcw, ChevronDown } from 'lucide-react';
+import { formatInventoryDateLabel, getDisplayInventoryBatches } from '../../utils/inventoryBatches';
+import { useState } from 'react';
+import { getAlternativeStockLevels } from '../../utils/inventoryConversionHelpers';
 
 const categoryColors = {
   Beans: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-400', border: 'border-amber-200' },
@@ -46,6 +49,17 @@ export default function InventoryTable({
   };
 
   const allSelected = selectableItems.length > 0 && selectableItems.every((item) => selectedItems.has(item.id));
+  const [expandedItems, setExpandedItems] = useState(new Set());
+
+  const toggleExpanded = (itemId) => {
+    const newExpanded = new Set(expandedItems);
+    if (newExpanded.has(itemId)) {
+      newExpanded.delete(itemId);
+    } else {
+      newExpanded.add(itemId);
+    }
+    setExpandedItems(newExpanded);
+  };
 
   return (
     <div className="hidden md:block overflow-x-auto">
@@ -55,7 +69,7 @@ export default function InventoryTable({
             <th className="w-12 text-center px-4 py-3">
               <input type="checkbox" checked={allSelected} onChange={handleSelectAll} className="accent-[#3D261D] rounded" />
             </th>
-            {['Item', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Current Value', 'Maximum Value', 'Date Added', 'Last Activity', 'Status', 'Actions'].map((h) => (
+            {['Item', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Current Value', 'Reorder Value', 'Date Added', 'Last Activity', 'Status', 'Actions'].map((h) => (
               <th key={h} className="px-4 py-3 text-left text-[10px] font-bold text-[#A89080] uppercase tracking-widest whitespace-nowrap">{h}</th>
             ))}
           </tr>
@@ -77,6 +91,14 @@ export default function InventoryTable({
             items.map((item) => {
               const cc = categoryColors[item.cat] || categoryColors.Other;
               const isSelected = selectedItems.has(item.id);
+              const expiredBatchDetails = getDisplayInventoryBatches(item)
+                .map((batch, index) => ({ ...batch, batchNumber: index + 1 }))
+                .filter((batch) => batch.isExpired);
+              const earliestExpiredBatchDate =
+                expiredBatchDetails
+                  .map((batch) => batch.expirationDate)
+                  .filter(Boolean)
+                  .sort()[0] || item.expirationDate || '';
               return (
                 <tr
                   key={item.id}
@@ -89,10 +111,17 @@ export default function InventoryTable({
                   <td className="px-4 py-3.5">
                     <p className="text-sm font-semibold text-[#1C100A]">{item.name}</p>
                     {item.hasExpiredStock && (
-                      <p className="mt-1 text-[11px] font-medium text-rose-600">
-                        {item.expiredQuantity} {item.unit} expired
-                        {item.expirationDate ? ` - since ${item.expirationDate}` : ''}
-                      </p>
+                      <div className="mt-1">
+                        <p className="text-[11px] font-semibold text-rose-700">
+                          Expired: {item.expiredQuantity} {item.unit}
+                          {expiredBatchDetails.length > 0 ? ` in ${expiredBatchDetails.length} batch${expiredBatchDetails.length === 1 ? '' : 'es'}` : ''}
+                        </p>
+                        {earliestExpiredBatchDate && (
+                          <p className="text-[10px] text-rose-500">
+                            Oldest expired batch: {formatInventoryDateLabel(earliestExpiredBatchDate)}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3.5">
@@ -104,17 +133,42 @@ export default function InventoryTable({
                       {item.cat}
                     </span>
                   </td>
-                  <td className="px-4 py-3.5">
-                    <p className={`text-sm font-bold ${item.isArchived ? 'text-slate-500' : item.hasExpiredStock ? 'text-rose-700' : item.isOut ? 'text-red-500' : item.isLow ? 'text-amber-600' : 'text-[#1C100A]'}`}>
-                      {item.stock}
-                    </p>
+                  <td className="px-4 py-3.5 align-top">
+                    <div className="space-y-2">
+                      <p className={`text-sm font-bold ${item.isArchived ? 'text-slate-500' : item.hasExpiredStock ? 'text-rose-700' : item.isOut ? 'text-red-500' : item.isLow ? 'text-amber-600' : 'text-[#1C100A]'}`}>
+                        {item.stock}
+                      </p>
+                      {item.conversions && item.conversions.length > 0 && (
+                        <button
+                          onClick={() => toggleExpanded(item.id)}
+                          className="flex items-center gap-1 text-[10px] text-[#6B5744] hover:text-[#3D261D] transition"
+                          title="View alternative units"
+                        >
+                          <ChevronDown className={`w-3 h-3 transition-transform ${expandedItems.has(item.id) ? 'rotate-180' : ''}`} />
+                          {expandedItems.has(item.id) ? 'Hide' : 'Show'} conversions
+                        </button>
+                      )}
+                      {expandedItems.has(item.id) && item.conversions && item.conversions.length > 0 && (
+                        <div className="bg-[#FAF8F5] rounded p-2 mt-1 space-y-1">
+                          {getAlternativeStockLevels(
+                            parseFloat(item.stock.split(' ')[0]),
+                            item.stock.split(' ')[1],
+                            item.conversions
+                          ).map((alt, idx) => (
+                            <p key={idx} className="text-[10px] text-[#7A6355]">
+                              {alt.quantity.toFixed(3).replace(/\.?0+$/, '')} {alt.unit}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3.5 text-sm font-medium text-[#7A6355] whitespace-nowrap">{item.reorder}</td>
                   <td className="px-4 py-3.5">
-                    <span className="text-sm font-semibold text-emerald-600">₱{item.currentValue.toFixed(2)}</span>
+                    <span className="text-sm font-semibold text-emerald-600">₱{item.currentValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="text-sm font-semibold text-[#3D261D]">₱{item.maxValue.toFixed(2)}</span>
+                    <span className="text-sm font-semibold text-[#3D261D]">₱{item.reorderValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
                   </td>
                   <td className="px-4 py-3.5 text-sm text-[#7A6355] whitespace-nowrap">{item.dateAdded}</td>
                   <td className="px-4 py-3.5 text-sm text-[#7A6355] whitespace-nowrap">{item.lastActivity}</td>
@@ -127,11 +181,6 @@ export default function InventoryTable({
                           : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
                         {item.status}
                       </span>
-                      {item.hasExpiredStock && !item.isArchived && (
-                        <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide whitespace-nowrap bg-rose-50 text-rose-700 border border-rose-200">
-                          Expired batch
-                        </span>
-                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3.5">

@@ -25,7 +25,7 @@ export default function InventoryHeader({ onAddClick, btnBrown, onExportCSV }) {
           className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm shadow-md ${btnBrown}`}
         >
           <Plus className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Add New Item</span>
+          <span className="hidden sm:inline">Add New Stock</span>
           <span className="sm:hidden">Add</span>
         </button>
       </div>

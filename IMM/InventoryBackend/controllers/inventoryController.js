@@ -10,6 +10,8 @@ const {
 
 const COLLECTION = "inventory";
 const LOG_COLLECTION = "inventoryLogs";
+const QUANTITY_PRECISION = 1000;
+const QUANTITY_EPSILON = 0.000001;
 
 // Category mapping: UI format to backend lowercase format
 const categoryToBackend = {
@@ -65,6 +67,24 @@ const mapBatchLogDetails = (batches = []) =>
     receivedAt: batch.receivedAt || null,
   }));
 
+const normalizeQuantityValue = (value) => {
+  const parsed = Number.parseFloat(value ?? 0);
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  return Math.round(parsed * QUANTITY_PRECISION) / QUANTITY_PRECISION;
+};
+
+const isWholeQuantity = (value) => Math.abs(value - Math.round(value)) < QUANTITY_EPSILON;
+
+const unitRequiresWholeQuantity = (unit = "") =>
+  String(unit).trim().toLowerCase() === "pcs";
+
+const validateUnitQuantity = (value, unit, label) => {
+  if (Number.isNaN(value)) return `${label} must be a valid number.`;
+  if (!unitRequiresWholeQuantity(unit)) return null;
+  if (isWholeQuantity(value)) return null;
+  return `${label} must be a whole number when unit is pcs.`;
+};
+
 const logActivity = async (action, itemId, itemName, userId, details = {}) => {
   await db.collection(LOG_COLLECTION).add({
     action,        // "CREATE" | "UPDATE" | "DELETE" | "STOCK_ADJUST"
@@ -83,19 +103,27 @@ const logActivity = async (action, itemId, itemName, userId, details = {}) => {
  */
 const createItem = async (req, res) => {
   try {
-    const { name, sku, category, quantity, unit, lowStockThreshold = 10, costPrice, supplier, expirationDate } = req.body;
+    const { name, sku, category, quantity, unit, lowStockThreshold = 10, costPrice, supplier, expirationDate, conversions = [] } = req.body;
 
-    const quantityInt = parseInt(quantity);
-    const thresholdInt = parseInt(lowStockThreshold);
+    const quantityValue = normalizeQuantityValue(quantity);
+    const thresholdValue = normalizeQuantityValue(lowStockThreshold);
     const cleanName = String(name).trim();
     const cleanCategory = categoryToBackend[category] || category.toLowerCase(); // Convert UI category to backend format
     const cleanUnit = String(unit).trim();
     const cleanSupplier = supplier ? String(supplier).trim() : null;
     const cleanExpirationDate = normalizeDateValue(expirationDate);
+    const quantityValidationMessage = validateUnitQuantity(quantityValue, cleanUnit, "Quantity");
+    if (quantityValidationMessage) {
+      return res.status(422).json({ success: false, message: quantityValidationMessage });
+    }
+    const thresholdValidationMessage = validateUnitQuantity(thresholdValue, cleanUnit, "Low stock threshold");
+    if (thresholdValidationMessage) {
+      return res.status(422).json({ success: false, message: thresholdValidationMessage });
+    }
     const batchSnapshot = resetStockBatches({
-      quantity: quantityInt,
+      quantity: quantityValue,
       expirationDate: cleanExpirationDate,
-      lowStockThreshold: thresholdInt,
+      lowStockThreshold: thresholdValue,
       receivedAt: new Date().toISOString(),
     });
 
@@ -129,12 +157,13 @@ const createItem = async (req, res) => {
       category: cleanCategory,
       quantity: batchSnapshot.quantity,
       unit: cleanUnit,
-      lowStockThreshold: thresholdInt,
+      lowStockThreshold: thresholdValue,
       costPrice: costPrice ? parseFloat(costPrice) : null,
       supplier: cleanSupplier,
       expirationDate: batchSnapshot.expirationDate,
       stockBatches: batchSnapshot.stockBatches,
       isLowStock: batchSnapshot.isLowStock,
+      conversions: Array.isArray(conversions) ? conversions : [],
       status: "active",
       createdBy: req.user.uid,
       updatedBy: req.user.uid,
@@ -263,21 +292,35 @@ const updateItem = async (req, res) => {
     }
 
     const current = doc.data();
-    const { name, category, quantity, unit, lowStockThreshold, costPrice, supplier, expirationDate } = req.body;
+    const { name, category, quantity, unit, lowStockThreshold, costPrice, supplier, expirationDate, conversions } = req.body;
+    const nextUnit = unit !== undefined ? String(unit).trim() : current.unit;
 
     const updates = { updatedBy: req.user.uid, updatedAt: FieldValue.serverTimestamp() };
 
     if (name !== undefined) updates.name = name;
     if (category !== undefined) updates.category = categoryToBackend[category] || category.toLowerCase(); // Convert UI category to backend format
-    if (unit !== undefined) updates.unit = unit;
+    if (unit !== undefined) updates.unit = nextUnit;
     if (supplier !== undefined) updates.supplier = supplier;
     if (costPrice !== undefined) updates.costPrice = parseFloat(costPrice);
+    if (conversions !== undefined) updates.conversions = Array.isArray(conversions) ? conversions : [];
 
-    const newQty = quantity !== undefined ? parseInt(quantity) : current.quantity;
-    const newThreshold = lowStockThreshold !== undefined ? parseInt(lowStockThreshold) : current.lowStockThreshold;
+    const newQty = quantity !== undefined ? normalizeQuantityValue(quantity) : Number(current.quantity ?? 0);
+    const newThreshold =
+      lowStockThreshold !== undefined
+        ? normalizeQuantityValue(lowStockThreshold)
+        : Number(current.lowStockThreshold ?? 0);
     const nextExpirationDate =
       expirationDate !== undefined ? normalizeDateValue(expirationDate) : current.expirationDate;
     const shouldResetStockBatches = quantity !== undefined || expirationDate !== undefined;
+    const quantityToValidate = shouldResetStockBatches ? newQty : Number(current.quantity ?? 0);
+    const quantityValidationMessage = validateUnitQuantity(quantityToValidate, nextUnit, "Quantity");
+    if (quantityValidationMessage) {
+      return res.status(422).json({ success: false, message: quantityValidationMessage });
+    }
+    const thresholdValidationMessage = validateUnitQuantity(newThreshold, nextUnit, "Low stock threshold");
+    if (thresholdValidationMessage) {
+      return res.status(422).json({ success: false, message: thresholdValidationMessage });
+    }
 
     if (lowStockThreshold !== undefined) updates.lowStockThreshold = newThreshold;
 
@@ -386,7 +429,7 @@ const deleteItem = async (req, res) => {
 const adjustStock = async (req, res) => {
   try {
     const { adjustment, reason, expirationDate } = req.body;
-    const adjustmentInt = parseInt(adjustment);
+    const adjustmentValue = normalizeQuantityValue(adjustment);
     const normalizedExpirationDate = normalizeDateValue(expirationDate);
     const docRef = db.collection(COLLECTION).doc(req.params.id);
 
@@ -398,10 +441,14 @@ const adjustStock = async (req, res) => {
       }
 
       const current = doc.data();
+      const quantityValidationMessage = validateUnitQuantity(Math.abs(adjustmentValue), current.unit, "Adjustment");
+      if (quantityValidationMessage) {
+        throw { code: 422, message: quantityValidationMessage };
+      }
       const batchSnapshot =
-        adjustmentInt >= 0
-          ? addStockBatch(current, adjustmentInt, normalizedExpirationDate, new Date().toISOString())
-          : consumeStockBatches(current, Math.abs(adjustmentInt));
+        adjustmentValue >= 0
+          ? addStockBatch(current, adjustmentValue, normalizedExpirationDate, new Date().toISOString())
+          : consumeStockBatches(current, Math.abs(adjustmentValue));
 
       transaction.update(docRef, {
         quantity: batchSnapshot.quantity,
@@ -425,12 +472,12 @@ const adjustStock = async (req, res) => {
     });
 
     await logActivity("STOCK_ADJUST", req.params.id, result.itemName, req.user.uid, {
-      adjustment: adjustmentInt,
-      direction: adjustmentInt >= 0 ? "IN" : "OUT",
+      adjustment: adjustmentValue,
+      direction: adjustmentValue >= 0 ? "IN" : "OUT",
       reason,
       sku: result.item.sku || "",
       unit: result.item.unit || "",
-      previousQuantity: result.newQuantity - adjustmentInt,
+      previousQuantity: result.newQuantity - adjustmentValue,
       newQuantity: result.newQuantity,
       expirationDate: result.expirationDate || null,
       addedBatch: result.addedBatch
@@ -459,7 +506,7 @@ const adjustStock = async (req, res) => {
       stockBatches: result.stockBatches || [],
       isLowStock: result.isLowStock,
       status: result.item.status || "active",
-      adjustment: adjustmentInt,
+      adjustment: adjustmentValue,
       reason,
     });
 
@@ -474,7 +521,7 @@ const adjustStock = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Stock adjusted by ${adjustmentInt > 0 ? "+" : ""}${adjustmentInt}`,
+      message: `Stock adjusted by ${adjustmentValue > 0 ? "+" : ""}${adjustmentValue}`,
       data: {
         newQuantity: result.newQuantity,
         isLowStock: result.isLowStock,
@@ -486,6 +533,7 @@ const adjustStock = async (req, res) => {
   } catch (error) {
     if (error.code === 404) return res.status(404).json({ success: false, message: error.message });
     if (error.code === 400) return res.status(400).json({ success: false, message: error.message });
+    if (error.code === 422) return res.status(422).json({ success: false, message: error.message });
     console.error("adjustStock error:", error);
     res.status(500).json({ success: false, message: toClientErrorMessage(error, "Failed to adjust stock") });
   }

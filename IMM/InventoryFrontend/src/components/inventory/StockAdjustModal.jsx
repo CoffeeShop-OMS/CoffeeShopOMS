@@ -41,6 +41,7 @@ export default function StockAdjustModal({
   const styles = modeStyles[mode] || modeStyles.increase;
   const Icon = styles.icon;
   const unitLabel = item.unit || 'unit';
+  const supportsFractionalUnit = String(unitLabel).toLowerCase() !== 'pcs';
   const maxRemovable = Number(item.quantity || 0);
   const stockPreview = summarizeInventoryAfterAddition(item, quantity, expirationDate);
   const hasExpiredStock = stockPreview.hasExpiredStock;
@@ -154,8 +155,8 @@ export default function StockAdjustModal({
                 <input
                   id="stock-adjust-quantity"
                   type="number"
-                  min="1"
-                  step="1"
+                  min={supportsFractionalUnit ? '0.001' : '1'}
+                  step={supportsFractionalUnit ? '0.001' : '1'}
                   autoFocus
                   value={quantity}
                   onChange={(event) => onQuantityChange?.(event.target.value)}
@@ -165,6 +166,11 @@ export default function StockAdjustModal({
                 <p className="mt-2 text-xs text-[#8A7666]">
                   {styles.helperPrefix}
                   {mode === 'decrease' ? ` Maximum removable: ${maxRemovable} ${unitLabel}.` : ''}
+                </p>
+                <p className="mt-1 text-[10px] text-[#9E8A7A]">
+                  {supportsFractionalUnit
+                    ? 'Decimal values are allowed for this unit.'
+                    : 'Whole numbers only for pieces.'}
                 </p>
               </div>
 
@@ -181,7 +187,7 @@ export default function StockAdjustModal({
                     className="w-full border border-[#E2DDD8] rounded-xl px-3.5 py-2.5 text-sm text-[#2C1810] bg-white transition focus:outline-none focus:border-[#6B3E26] focus:ring-2 focus:ring-[#6B3E26]/10"
                   />
                   <p className="mt-2 text-xs text-[#8A7666]">
-                    Optional for non-expiring items. If you set this, the new batch will be tracked separately for FIFO and expiration alerts.
+                    Optional for non-expiring items. If you set this, the new stock will be saved as its own batch so expiry tracking stays clear.
                   </p>
                 </div>
               )}

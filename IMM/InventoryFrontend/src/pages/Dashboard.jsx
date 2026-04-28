@@ -10,7 +10,7 @@ import StatCards from '../components/inventory/StatCards';
 import DailyUsageGraph from '../components/dashboard/DailyUsageGraph';
 import { getInventory, getInventoryLogs } from '../services/api';
 import { getAuthSession } from '../utils/authStorage';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 
 const dashboardCache = {
   stats: null,
@@ -360,7 +360,7 @@ export default function Dashboard({ setIsAuthenticated }) {
             cards={[
               { icon: Package, label: 'Total Items', value: String(stats.total), sub: 'Across all categories', accent: '#3D261D', iconBg: 'bg-[#EDE4DC]', iconColor: '#3D261D', action: 'all' },
               { icon: TrendingDown, label: 'Out of Stock', value: String(stats.outCount), sub: 'Need replenishment', accent: '#DC2626', iconBg: 'bg-red-100', iconColor: '#DC2626', action: 'out-of-stock' },
-              { icon: DollarSign, label: 'Inventory Value', value: `₱${Number(stats.value || 0).toFixed(2)}`, sub: 'Current valuation', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669', action: 'value' },
+              { icon: DollarSign, label: 'Inventory Value', value: `₱${Number(stats.value || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`, sub: 'Current valuation', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669', action: 'value' },
               { icon: AlertTriangle, label: 'Low Items', value: String(stats.lowCount), sub: 'Need attention', accent: '#F59E0B', iconBg: 'bg-amber-100', iconColor: '#B45309', action: 'low-stock' },
               { icon: Archive, label: 'Archived', value: String(stats.archivedCount), sub: 'Hidden from active inventory', accent: '#6B7280', iconBg: 'bg-slate-100', iconColor: '#475569', action: 'archived' },
               { icon: RefreshCw, label: 'Last Sync', value: lastSync ? new Date(lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—', sub: lastSync ? new Date(lastSync).toLocaleDateString() : '', accent: '#6B7280', iconBg: 'bg-gray-100', iconColor: '#374151' },
@@ -579,24 +579,6 @@ export default function Dashboard({ setIsAuthenticated }) {
             </div>
 
           </div>
-
-          {/* Restock Banner */}
-          <div className="bg-[#FAF6F4] rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between border border-[#F0EBE6]">
-            <div className="flex items-center gap-4 mb-4 md:mb-0">
-              <div className="bg-[#3D261D] p-3 rounded-xl">
-                <Coffee className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-lg font-serif">Need a restock fast?</h3>
-                <p className="text-sm text-gray-600">Quick-order from your top 3 suppliers in one click.</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button className="bg-white border border-gray-200 text-gray-800 px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors">Supplier Portal</button>
-              <button className="bg-[#3D261D] text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#2A1A14] transition-colors">Create Bulk PO</button>
-            </div>
-          </div>
-
           {/* Footer */}
           <div className="mt-8 text-center border-t border-gray-200 pt-6 pb-2">
             <p className="text-[11px] text-gray-400">

@@ -126,4 +126,25 @@ export const markAllNotificationsRead = (token) =>
     headers: authHeader(token),
   });
 
+export const getConversionRules = (token) =>
+  request("/conversion-rules", {
+    headers: authHeader(token),
+  });
+
+export const saveConversionRules = (token, rules) =>
+  request("/conversion-rules", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader(token),
+    },
+    body: JSON.stringify({ rules }),
+  });
+
+export const clearConversionRules = (token) =>
+  request("/conversion-rules", {
+    method: "DELETE",
+    headers: authHeader(token),
+  });
+
 export { apiRoot };

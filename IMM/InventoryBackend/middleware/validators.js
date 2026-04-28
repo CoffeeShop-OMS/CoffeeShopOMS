@@ -100,16 +100,16 @@ const createItemValidator = [
     .isIn(INVENTORY_CATEGORIES)
     .withMessage("Invalid category"),
   body("quantity")
-    .isInt({ min: 0 })
-    .withMessage("Quantity must be a non-negative integer"),
+    .isFloat({ min: 0 })
+    .withMessage("Quantity must be a non-negative number"),
   body("unit")
     .trim()
     .notEmpty()
     .withMessage("Unit is required (e.g. kg, pcs, liters)"),
   body("lowStockThreshold")
     .optional()
-    .isInt({ min: 0 })
-    .withMessage("Low stock threshold must be a non-negative integer"),
+    .isFloat({ min: 0 })
+    .withMessage("Low stock threshold must be a non-negative number"),
   body("costPrice")
     .optional()
     .isFloat({ min: 0 })
@@ -134,9 +134,9 @@ const updateItemValidator = [
     .customSanitizer(normalizeCategory)
     .isIn(INVENTORY_CATEGORIES)
     .withMessage("Invalid category"),
-  body("quantity").optional().isInt({ min: 0 }),
+  body("quantity").optional().isFloat({ min: 0 }),
   body("unit").optional().trim().notEmpty(),
-  body("lowStockThreshold").optional().isInt({ min: 0 }),
+  body("lowStockThreshold").optional().isFloat({ min: 0 }),
   body("costPrice").optional().isFloat({ min: 0 }),
   body("supplier")
     .optional({ values: "falsy" })
@@ -153,8 +153,8 @@ const updateItemValidator = [
 const adjustStockValidator = [
   param("id").notEmpty().withMessage("Item ID is required"),
   body("adjustment")
-    .isInt()
-    .withMessage("Adjustment must be an integer (positive to add, negative to deduct)"),
+    .isFloat()
+    .withMessage("Adjustment must be a number (positive to add, negative to deduct)"),
   body("expirationDate")
     .optional({ values: "falsy" })
     .isISO8601()

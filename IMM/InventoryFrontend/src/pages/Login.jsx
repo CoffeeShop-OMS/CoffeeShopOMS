@@ -31,7 +31,7 @@ export default function Login({ setIsAuthenticated }) {
       saveAuthSession(
         {
           email: result?.data?.email || email,
-          role: result?.data?.role || "admin",
+          role: result?.data?.role || "manager",
           token: result?.data?.token,
           loggedInAt: new Date().toISOString(),
         },
@@ -147,7 +147,7 @@ export default function Login({ setIsAuthenticated }) {
 
           {/* Forgot Password */}
           <div className="mt-8 text-center text-sm text-gray-500">
-            Forgot your password? <a href="#" className="font-semibold transition-colors" style={{ color: '#A08D87' }}>Contact your Administrator</a>
+            Forgot your password? <a href="#" className="font-semibold transition-colors" style={{ color: '#A08D87' }}>Contact your Store Manager</a>
           </div>
         </div>
       </div>

@@ -1,6 +1,14 @@
 const { normalizeDateValue } = require("./notificationService");
 
 const DEFAULT_FALLBACK_DATE = "9999-12-31";
+const QUANTITY_PRECISION = 1000;
+const QUANTITY_EPSILON = 0.000001;
+
+const normalizeQuantityValue = (value) => {
+  const parsed = Number.parseFloat(value ?? 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.round(parsed * QUANTITY_PRECISION) / QUANTITY_PRECISION;
+};
 
 const toMillis = (value) => {
   if (!value) return 0;
@@ -41,8 +49,8 @@ const sortStockBatches = (batches = []) => {
 };
 
 const normalizeSingleBatch = (batch = {}, fallbackReceivedAt, fallbackId) => {
-  const quantity = Number.parseInt(batch.quantity ?? 0, 10);
-  if (!Number.isFinite(quantity) || quantity <= 0) return null;
+  const quantity = normalizeQuantityValue(batch.quantity);
+  if (!Number.isFinite(quantity) || quantity <= QUANTITY_EPSILON) return null;
 
   return {
     id: batch.id || fallbackId || generateBatchId(),
@@ -66,15 +74,15 @@ const normalizeStockBatches = (item = {}, { seedFromItem = true } = {}) => {
     return sortStockBatches(explicitBatches);
   }
 
-  const itemQuantity = Number.parseInt(item.quantity ?? 0, 10);
-  if (!Number.isFinite(itemQuantity) || itemQuantity <= 0) {
+  const normalizedItemQuantity = normalizeQuantityValue(item.quantity);
+  if (!Number.isFinite(normalizedItemQuantity) || normalizedItemQuantity <= QUANTITY_EPSILON) {
     return [];
   }
 
   const seededBatch = normalizeSingleBatch(
     {
       id: `${item.id || "item"}-seed`,
-      quantity: itemQuantity,
+      quantity: normalizedItemQuantity,
       expirationDate: item.expirationDate || null,
       receivedAt: fallbackReceivedAt,
     },
@@ -91,7 +99,9 @@ const summarizeStockBatches = (batches = [], lowStockThreshold = 0) => {
       .filter(Boolean)
   );
 
-  const quantity = normalized.reduce((sum, batch) => sum + batch.quantity, 0);
+  const quantity = normalizeQuantityValue(
+    normalized.reduce((sum, batch) => sum + batch.quantity, 0)
+  );
   const expirationDate =
     normalized
       .map((batch) => batch.expirationDate)
@@ -102,7 +112,7 @@ const summarizeStockBatches = (batches = [], lowStockThreshold = 0) => {
     stockBatches: normalized,
     quantity,
     expirationDate,
-    isLowStock: quantity <= Number(lowStockThreshold ?? 0),
+    isLowStock: quantity <= normalizeQuantityValue(lowStockThreshold),
   };
 };
 
@@ -112,8 +122,8 @@ const resetStockBatches = ({
   lowStockThreshold = 0,
   receivedAt = new Date().toISOString(),
 } = {}) => {
-  const parsedQuantity = Number.parseInt(quantity ?? 0, 10);
-  if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+  const parsedQuantity = normalizeQuantityValue(quantity);
+  if (!Number.isFinite(parsedQuantity) || parsedQuantity <= QUANTITY_EPSILON) {
     return summarizeStockBatches([], lowStockThreshold);
   }
 
@@ -136,10 +146,10 @@ const addStockBatch = (
   expirationDate = null,
   receivedAt = new Date().toISOString()
 ) => {
-  const parsedQuantity = Number.parseInt(additionQuantity ?? 0, 10);
+  const parsedQuantity = normalizeQuantityValue(additionQuantity);
   const currentBatches = normalizeStockBatches(item);
 
-  if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+  if (!Number.isFinite(parsedQuantity) || parsedQuantity <= QUANTITY_EPSILON) {
     return {
       ...summarizeStockBatches(currentBatches, item.lowStockThreshold),
       addedBatch: null,
@@ -165,18 +175,20 @@ const addStockBatch = (
 };
 
 const consumeStockBatches = (item = {}, deductionQuantity) => {
-  const parsedQuantity = Number.parseInt(deductionQuantity ?? 0, 10);
+  const parsedQuantity = normalizeQuantityValue(deductionQuantity);
   const currentBatches = normalizeStockBatches(item);
-  const currentQuantity = currentBatches.reduce((sum, batch) => sum + batch.quantity, 0);
+  const currentQuantity = normalizeQuantityValue(
+    currentBatches.reduce((sum, batch) => sum + batch.quantity, 0)
+  );
 
-  if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+  if (!Number.isFinite(parsedQuantity) || parsedQuantity <= QUANTITY_EPSILON) {
     return {
       ...summarizeStockBatches(currentBatches, item.lowStockThreshold),
       consumedBatches: [],
     };
   }
 
-  if (parsedQuantity > currentQuantity) {
+  if (parsedQuantity - currentQuantity > QUANTITY_EPSILON) {
     throw {
       code: 400,
       message: `Insufficient stock. Current: ${currentQuantity}, Adjustment: -${parsedQuantity}`,
@@ -212,10 +224,10 @@ const consumeStockBatches = (item = {}, deductionQuantity) => {
       continue;
     }
 
-    const consumedQuantity = Math.min(batch.quantity, remaining);
-    const remainingQuantity = batch.quantity - consumedQuantity;
+    const consumedQuantity = normalizeQuantityValue(Math.min(batch.quantity, remaining));
+    const remainingQuantity = normalizeQuantityValue(batch.quantity - consumedQuantity);
 
-    if (consumedQuantity > 0) {
+    if (consumedQuantity > QUANTITY_EPSILON) {
       const today = new Date().toISOString().split('T')[0];
       const isExpired = batch.expirationDate <= today;
       
@@ -228,14 +240,14 @@ const consumeStockBatches = (item = {}, deductionQuantity) => {
       });
     }
 
-    if (remainingQuantity > 0) {
+    if (remainingQuantity > QUANTITY_EPSILON) {
       nextBatches.push({
         ...batch,
         quantity: remainingQuantity,
       });
     }
 
-    remaining -= consumedQuantity;
+    remaining = normalizeQuantityValue(remaining - consumedQuantity);
   }
 
   const summary = summarizeStockBatches(nextBatches, item.lowStockThreshold);

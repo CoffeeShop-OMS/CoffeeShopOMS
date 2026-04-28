@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd /c/Users/ADMIN/Desktop/CoffeeShopOMS/IMM/InventoryBackend ; node -c app\\.js ; echo \"✓ Backend app\\.js syntax OK\" ; echo \"✗ Syntax error\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

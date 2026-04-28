@@ -7,6 +7,7 @@ const morgan = require("morgan");
 
 const authRoutes = require("./routes/authRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
+const conversionRulesRoutes = require("./routes/conversionRulesRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const { initializeWebSocket } = require("./services/realtime");
 
@@ -81,6 +82,7 @@ app.get("/health", (req, res) => {
 
 app.use("/api/auth", process.env.NODE_ENV === 'development' ? authRoutes : [authLimiter, authRoutes]);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/conversion-rules", conversionRulesRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────

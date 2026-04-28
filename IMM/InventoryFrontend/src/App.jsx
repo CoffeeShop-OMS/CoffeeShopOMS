@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import "react-toastify/dist/ReactToastify.css";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import Reports from "./pages/Reports";
-import Settings from "./pages/Settings";
 import Layout from "./components/Layout";
 import StyledToastContainer from "./components/StyledToastContainer";
 import { clearAuthSession, getAuthSession } from "./utils/authStorage";
@@ -54,7 +52,6 @@ export default function App() {
         <Route path="/dashboard" element={isAuthenticated ? <Layout setIsAuthenticated={setIsAuthenticated}><Dashboard setIsAuthenticated={setIsAuthenticated} /></Layout> : <Navigate to="/login" replace />} />
         <Route path="/inventory" element={isAuthenticated ? <Layout setIsAuthenticated={setIsAuthenticated}><Inventory setIsAuthenticated={setIsAuthenticated} /></Layout> : <Navigate to="/login" replace />} />
         <Route path="/reports" element={isAuthenticated ? <Layout setIsAuthenticated={setIsAuthenticated}><Reports setIsAuthenticated={setIsAuthenticated} /></Layout> : <Navigate to="/login" replace />} />
-        <Route path="/settings" element={isAuthenticated ? <Layout setIsAuthenticated={setIsAuthenticated}><Settings setIsAuthenticated={setIsAuthenticated} /></Layout> : <Navigate to="/login" replace />} />
         
         {/* DEFAULT ROUTE */}
         <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />

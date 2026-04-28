@@ -1,9 +1,9 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Filter, Search, Coffee, Archive, Package, AlertTriangle, TrendingDown, RefreshCcw, PlusCircle, Edit2, Trash2, DollarSign, TrendingUp, ScrollText, Clock3, RotateCcw } from 'lucide-react';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import { getAuthSession } from '../utils/authStorage';
-import { adjustInventoryStock, createInventoryItem, updateInventoryItem, deleteInventoryItem, restoreInventoryItem, getInventory, getInventoryLogs, getNotifications } from '../services/api';
+import { adjustInventoryStock, createInventoryItem, updateInventoryItem, deleteInventoryItem, restoreInventoryItem, getInventory, getInventoryLogs, getNotifications, getConversionRules } from '../services/api';
 import Dropdown from '../components/Dropdown';
 import InventoryHeader from '../components/inventory/InventoryHeader';
 import InventoryAlertBanner from '../components/inventory/InventoryAlertBanner';
@@ -13,8 +13,8 @@ import InventoryMobileList from '../components/inventory/InventoryMobileList';
 import InventoryHistoryPanel from '../components/inventory/InventoryHistoryPanel';
 import ItemDrawer from '../components/inventory/ItemDrawer';
 import ActionConfirmModal from '../components/inventory/ActionConfirmModal';
-import DuplicateItemModal from '../components/inventory/DuplicateItemModal';
 import StockAdjustModal from '../components/inventory/StockAdjustModal';
+import DuplicateItemModal from '../components/inventory/DuplicateItemModal';
 import { useWebSocket } from '../hooks/useWebSocket';
 import {
   applyRealtimeUiInventoryEvent,
@@ -45,6 +45,26 @@ const inputCls = 'w-full border border-[#E2DDD8] rounded-xl px-3.5 py-2.5 text-s
 const STOCK_HISTORY_PAGE_SIZE = 40;
 const STOCK_HISTORY_DEDUPE_WINDOW_MS = 5000;
 const PESO_SYMBOL = '\u20B1';
+const QUANTITY_PRECISION = 1000;
+
+const normalizeInventoryQuantity = (value) => {
+  const parsed = Number.parseFloat(value ?? 0);
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  return Math.round(parsed * QUANTITY_PRECISION) / QUANTITY_PRECISION;
+};
+
+const unitSupportsFractionalQuantity = (unit = '') =>
+  String(unit).trim().toLowerCase() !== 'pcs';
+
+const isWholeInventoryQuantity = (value) => Math.abs(value - Math.round(value)) < 0.000001;
+
+const formatInventoryQuantity = (value) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return String(value ?? '');
+  return Number.isInteger(numericValue)
+    ? String(numericValue)
+    : numericValue.toFixed(3).replace(/\.?0+$/, '');
+};
 
 const exportToCSV = (items) => {
   if (items.length === 0) {
@@ -52,7 +72,7 @@ const exportToCSV = (items) => {
     return;
   }
 
-  const headers = ['Item Name', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Unit Cost', 'Current Value', 'Max Value', 'Status', 'Last Updated'];
+  const headers = ['Item Name', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Unit Cost', 'Current Value', 'Reorder Value', 'Status', 'Last Updated'];
   const rows = items.map((item) => [
     item.name,
     item.sku,
@@ -61,7 +81,7 @@ const exportToCSV = (items) => {
     item.threshold,
     item.costPrice.toFixed(2),
     item.currentValue.toFixed(2),
-    item.maxValue.toFixed(2),
+    item.reorderValue.toFixed(2),
     item.status,
     item.date,
   ]);
@@ -239,7 +259,7 @@ export default function Inventory() {
   const itemsPerPage = 10;
   const recentActivitiesPerPage = 5;
   const [newItem, setNewItem] = useState({
-    itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '', expirationDate: '',
+    itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '', expirationDate: '', conversions: [],
   });
 
   const RECENT_ACTIVITIES_STORAGE_KEY = 'inventoryRecentActivities';
@@ -260,20 +280,20 @@ export default function Inventory() {
       const absAdjustment = Math.abs(adjustment);
       const direction = adjustment > 0 ? 'Restocked' : 'Consumed';
       const units = activity.details?.unit || '';
-      const reason = activity.details?.reason ? ` Â· ${activity.details.reason}` : '';
+      const reason = activity.details?.reason ? ` - ${activity.details.reason}` : '';
       return `${direction} ${absAdjustment}${units} ${reason}`.trim();
     }
 
     if (activity.type === 'created') {
-      return activity.details?.reason ? `Created Â· ${activity.details.reason}` : 'Created item';
+      return activity.details?.reason ? `Created - ${activity.details.reason}` : 'Created item';
     }
 
     if (activity.type === 'updated') {
-      return activity.details?.reason ? `Updated Â· ${activity.details.reason}` : 'Updated item details';
+      return activity.details?.reason ? `Updated - ${activity.details.reason}` : 'Updated item details';
     }
 
     if (activity.type === 'deleted') {
-      return activity.details?.reason ? `Archived Â· ${activity.details.reason}` : 'Archived item';
+      return activity.details?.reason ? `Archived - ${activity.details.reason}` : 'Archived item';
     }
 
     return activity.details?.reason || 'Inventory activity';
@@ -441,9 +461,17 @@ export default function Inventory() {
       .replace(/[^\w\s]/g, '');
   };
 
+  const selectedStockStatusFilter = useMemo(() => {
+    const filter = searchParams.get('filter');
+
+    if (filter === 'expired') return 'expired';
+    if (filter === 'out-of-stock') return 'out-of-stock';
+    if (filter === 'low-stock') return 'low-stock';
+    return 'all';
+  }, [searchParams]);
+
   const filteredItems = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    const filter = searchParams.get('filter');
 
     let filtered = inventoryItems.filter((item) => {
       const matchCat    = categoryFilter === 'All' || item.cat === categoryFilter;
@@ -455,11 +483,11 @@ export default function Inventory() {
 
       // Additional filtering for dashboard navigation
       let matchDashboardFilter = true;
-      if (filter === 'low-stock') {
+      if (selectedStockStatusFilter === 'low-stock') {
         matchDashboardFilter = item.isLow && !item.isArchived;
-      } else if (filter === 'out-of-stock') {
+      } else if (selectedStockStatusFilter === 'out-of-stock') {
         matchDashboardFilter = item.isOut && !item.isArchived;
-      } else if (filter === 'expired') {
+      } else if (selectedStockStatusFilter === 'expired') {
         matchDashboardFilter = item.hasExpiredStock && !item.isArchived;
       }
 
@@ -502,12 +530,12 @@ export default function Inventory() {
     });
 
     return filtered;
-  }, [inventoryItems, searchTerm, categoryFilter, statusFilter, sortBy, sortOrder, searchParams]);
+  }, [inventoryItems, searchTerm, categoryFilter, statusFilter, sortBy, sortOrder, selectedStockStatusFilter]);
 
   // Reset to page 1 when filters or sorting change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter, statusFilter, sortBy, sortOrder]);
+  }, [searchTerm, categoryFilter, statusFilter, sortBy, sortOrder, selectedStockStatusFilter]);
 
   // Calculate paginated items
   const paginatedItems = useMemo(() => {
@@ -517,6 +545,13 @@ export default function Inventory() {
   }, [filteredItems, currentPage]);
 
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+
+  useEffect(() => {
+    const safeTotalPages = totalPages || 1;
+    if (currentPage > safeTotalPages) {
+      setCurrentPage(safeTotalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const stats = useMemo(() => {
     const activeItems = inventoryItems.filter((i) => !i.isArchived);
@@ -528,7 +563,7 @@ export default function Inventory() {
       outCount: activeItems.filter((i) => i.isOut).length,
       archivedCount: archivedItems.length,
       value: activeItems.reduce((s, i) => s + i.quantity * i.costPrice, 0),
-      maxValue: activeItems.reduce((s, i) => s + i.threshold * i.costPrice, 0),
+      reorderValue: activeItems.reduce((s, i) => s + i.threshold * i.costPrice, 0),
     };
   }, [inventoryItems]);
 
@@ -557,8 +592,8 @@ export default function Inventory() {
       { icon: AlertTriangle, label: 'Low Stock', value: stats?.lowCount?.toString() ?? '0', sub: 'Need attention', accent: '#B45309', iconBg: 'bg-amber-100', iconColor: '#B45309' },
       { icon: TrendingDown, label: 'Out of Stock', value: stats?.outCount?.toString() ?? '0', sub: 'Need replenishment', accent: '#DC2626', iconBg: 'bg-red-100', iconColor: '#DC2626' },
       { icon: Archive, label: 'Archived', value: stats?.archivedCount?.toString() ?? '0', sub: 'Hidden from active inventory', accent: '#6B7280', iconBg: 'bg-slate-100', iconColor: '#475569' },
-      { icon: DollarSign, label: 'Current Value', value: stats ? `${PESO_SYMBOL}${Number(stats.value || 0).toFixed(2)}` : `${PESO_SYMBOL}0.00`, sub: 'Current inventory value', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669' },
-      { icon: TrendingUp, label: 'Maximum Value', value: stats ? `${PESO_SYMBOL}${Number(stats.maxValue || 0).toFixed(2)}` : `${PESO_SYMBOL}0.00`, sub: 'Value at full capacity', accent: '#7C3AED', iconBg: 'bg-purple-100', iconColor: '#7C3AED' },
+      { icon: DollarSign, label: 'Current Value', value: stats ? `${PESO_SYMBOL}${Number(stats.value || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : `${PESO_SYMBOL}0.00`, sub: 'Current inventory value', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669' },
+      { icon: TrendingUp, label: 'Reorder Value', value: stats ? `${PESO_SYMBOL}${Number(stats.reorderValue || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : `${PESO_SYMBOL}0.00`, sub: 'Value at reorder level', accent: '#7C3AED', iconBg: 'bg-purple-100', iconColor: '#7C3AED' },
     ],
     [stats]
   );
@@ -603,15 +638,6 @@ export default function Inventory() {
     setSelectedItems(new Set());
     setSearchParams(nextParams);
   }, [searchParams, setSearchParams]);
-
-  const selectedStockStatusFilter = useMemo(() => {
-    const filter = searchParams.get('filter');
-
-    if (filter === 'expired') return 'expired';
-    if (filter === 'out-of-stock') return 'out-of-stock';
-    if (filter === 'low-stock') return 'low-stock';
-    return 'all';
-  }, [searchParams]);
 
   const handleStockStatusFilterChange = useCallback((value) => {
     const nextFilter = value === 'all' ? null : value;
@@ -922,8 +948,8 @@ export default function Inventory() {
     const details = [
       { label: 'Item', value: itemName },
       { label: 'Category', value: category },
-      { label: 'Stock', value: `${initialStock} ${unit}`.trim() },
-      { label: 'Minimum', value: `${minimumStock} ${unit}`.trim() },
+      { label: 'Stock', value: `${formatInventoryQuantity(initialStock)} ${unit}`.trim() },
+      { label: 'Minimum', value: `${formatInventoryQuantity(minimumStock)} ${unit}`.trim() },
       { label: 'Cost', value: `PHP ${Number(costPerUnit).toFixed(2)} / ${unit}` },
     ];
 
@@ -964,13 +990,13 @@ export default function Inventory() {
     setDrawerMode('add');
     setFormError('');
     setConfirmationAction(null);
-    setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '', expirationDate: '' });
+    setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '', expirationDate: '', conversions: [] });
     clearDuplicatePrompt();
   };
 
   const handleAddClick = () => {
     setDrawerMode('add');
-      setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '', expirationDate: '' });
+      setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '', expirationDate: '', conversions: [] });
     setFormError('');
     setIsDrawerOpen(true);
   };
@@ -986,6 +1012,7 @@ export default function Inventory() {
       costPerUnit: item.costPrice.toString(),
       minimumStock: item.threshold.toString(),
       expirationDate: item.expirationDate || '',
+      conversions: item.conversions || [],
     });
     setFormError('');
     setIsDrawerOpen(true);
@@ -1105,7 +1132,7 @@ export default function Inventory() {
     setPendingCreateInput(null);
   }
 
-  const submitCreateItem = async ({ token, itemName, category, unit, initialStock, minimumStock, costPerUnit, expirationDate }) => {
+  const submitCreateItem = async ({ token, itemName, category, unit, initialStock, minimumStock, costPerUnit, expirationDate, conversions = [] }) => {
     const result = await createInventoryItem(token, {
       name: itemName,
       category: categoryToBackend[category] || 'other',
@@ -1115,6 +1142,7 @@ export default function Inventory() {
       costPrice: costPerUnit,
       supplier: '',
       expirationDate: expirationDate || null,
+      conversions,
     });
 
     if (result?.data) {
@@ -1151,19 +1179,22 @@ export default function Inventory() {
       return;
     }
 
-    const quantity = parseInt(stockAdjustQuantity, 10);
+    const { item, direction } = stockAdjustDraft;
+    const quantity = normalizeInventoryQuantity(stockAdjustQuantity);
     if (!stockAdjustQuantity || Number.isNaN(quantity)) {
-      toast.error('Please enter a valid whole number.');
+      toast.error('Please enter a valid quantity.');
       return;
     }
     if (quantity <= 0) {
       toast.error('Quantity must be greater than zero.');
       return;
     }
-
-    const { item, direction } = stockAdjustDraft;
+    if (!unitSupportsFractionalQuantity(item.unit) && !isWholeInventoryQuantity(quantity)) {
+      toast.error('Pieces must use whole numbers only.');
+      return;
+    }
     if (direction < 0 && quantity > item.quantity) {
-      toast.error(`You can only remove up to ${item.quantity} ${item.unit || 'unit'} from ${item.name}.`);
+      toast.error(`You can only remove up to ${formatInventoryQuantity(item.quantity)} ${item.unit || 'unit'} from ${item.name}.`);
       return;
     }
 
@@ -1171,8 +1202,8 @@ export default function Inventory() {
 
     const reason =
       signedAdjustment > 0
-        ? `Quick stock increase from inventory list (${quantity} ${item.unit || 'unit'})`
-        : `Quick stock decrease from inventory list (${quantity} ${item.unit || 'unit'})`;
+        ? `Quick stock increase from inventory list (${formatInventoryQuantity(quantity)} ${item.unit || 'unit'})`
+        : `Quick stock decrease from inventory list (${formatInventoryQuantity(quantity)} ${item.unit || 'unit'})`;
 
     try {
       setIsSubmittingStockAdjust(true);
@@ -1239,8 +1270,8 @@ export default function Inventory() {
 
       toast.success(
         signedAdjustment > 0
-          ? `Added ${quantity} ${item.unit || 'unit'} to ${item.name}`
-          : `Removed ${quantity} ${item.unit || 'unit'} from ${item.name}`
+          ? `Added ${formatInventoryQuantity(quantity)} ${item.unit || 'unit'} to ${item.name}`
+          : `Removed ${formatInventoryQuantity(quantity)} ${item.unit || 'unit'} from ${item.name}`
       );
       setStockAdjustDraft(null);
       setStockAdjustQuantity('1');
@@ -1287,9 +1318,10 @@ export default function Inventory() {
     }
 
     const itemName = newItem.itemName.trim();
+    const unit = newItem.unit;
     const costPerUnit = parseFloat(newItem.costPerUnit);
-    const minimumStock = parseInt(newItem.minimumStock, 10);
-    const initialStock = parseInt(newItem.initialStock, 10);
+    const minimumStock = normalizeInventoryQuantity(newItem.minimumStock);
+    const initialStock = normalizeInventoryQuantity(newItem.initialStock);
 
     if (!itemName) {
       toast.error('Item name is required.');
@@ -1315,7 +1347,7 @@ export default function Inventory() {
       toast.error('Cost per unit is too high.');
       return;
     }
-    if (!newItem.minimumStock || isNaN(minimumStock)) {
+    if (!newItem.minimumStock || Number.isNaN(minimumStock)) {
       toast.error('Minimum stock is required and must be a valid number.');
       return;
     }
@@ -1323,21 +1355,29 @@ export default function Inventory() {
       toast.error('Minimum stock cannot be negative.');
       return;
     }
+    if (!unitSupportsFractionalQuantity(unit) && !isWholeInventoryQuantity(minimumStock)) {
+      toast.error('Minimum stock must be a whole number when unit is pcs.');
+      return;
+    }
     if (!newItem.category) {
       toast.error('Please select a category.');
       return;
     }
-    if (!newItem.unit) {
+    if (!unit) {
       toast.error('Please select a unit.');
       return;
     }
     if (drawerMode === 'add') {
       if ((newItem.initialStock === '' || newItem.initialStock === undefined) || Number.isNaN(initialStock)) {
-        toast.error('Stock level is required and must be a whole number.');
+        toast.error('Stock level is required and must be a valid number.');
         return;
       }
       if (initialStock < 0) {
         toast.error('Stock level cannot be negative.');
+        return;
+      }
+      if (!unitSupportsFractionalQuantity(unit) && !isWholeInventoryQuantity(initialStock)) {
+        toast.error('Stock level must be a whole number when unit is pcs.');
         return;
       }
     }
@@ -1354,11 +1394,12 @@ export default function Inventory() {
           setPendingCreateInput({
             itemName,
             category: newItem.category,
-            unit: newItem.unit,
+            unit,
             initialStock,
             minimumStock,
             costPerUnit,
             expirationDate: newItem.expirationDate,
+            conversions: newItem.conversions,
           });
         setShowDuplicateModal(true);
         return;
@@ -1374,7 +1415,7 @@ export default function Inventory() {
         details: buildStockDetails({
           itemName,
           category: newItem.category,
-          unit: newItem.unit,
+          unit,
           initialStock,
           minimumStock,
           costPerUnit,
@@ -1383,11 +1424,12 @@ export default function Inventory() {
         payload: {
           itemName,
           category: newItem.category,
-          unit: newItem.unit,
+          unit,
           initialStock,
           minimumStock,
           costPerUnit,
           expirationDate: newItem.expirationDate,
+          conversions: newItem.conversions,
         },
       });
       return;
@@ -1403,7 +1445,7 @@ export default function Inventory() {
       details: buildStockDetails({
         itemName,
         category: newItem.category,
-        unit: newItem.unit,
+        unit,
         initialStock,
         minimumStock,
         costPerUnit,
@@ -1412,9 +1454,10 @@ export default function Inventory() {
         id: newItem.id,
         itemName,
         category: newItem.category,
-        unit: newItem.unit,
+        unit,
         minimumStock,
         costPerUnit,
+        conversions: newItem.conversions,
       },
     });
   };
@@ -1447,6 +1490,7 @@ export default function Inventory() {
           unit: action.payload.unit,
           lowStockThreshold: action.payload.minimumStock,
           costPrice: action.payload.costPerUnit,
+          conversions: action.payload.conversions,
         });
 
         if (result?.data) {
@@ -1558,7 +1602,7 @@ export default function Inventory() {
         </>
       )}
 
-      {/* â”€â”€ Main Table Card â”€â”€ */}
+      {/* Main table card */}
       <div className="bg-white rounded-2xl border border-[#EAE5E0] overflow-hidden shadow-sm">
 
         {/* Toolbar */}
@@ -1569,14 +1613,14 @@ export default function Inventory() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#C4B8B0]" />
               <input
                 type="text"
-                placeholder="Search itemsâ€¦"
+                placeholder="Search items..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-3.5 py-2 border border-[#E2DDD8] rounded-xl text-sm text-[#2C1810] bg-white transition focus:outline-none focus:border-[#6B3E26] focus:ring-2 focus:ring-[#6B3E26]/10 placeholder:text-[#C4B8B0]"
               />
             </div>
             <div className="flex items-center gap-2">
-              {/* Bulk delete button â€” shows when items selected */}
+              {/* Bulk delete button shown when items are selected */}
               {activeTab === 'inventory' && selectedActiveCount > 0 && (
                 <button
                   onClick={handleBulkDelete}
@@ -1585,7 +1629,7 @@ export default function Inventory() {
                   <span>Archive {selectedActiveCount}</span>
                 </button>
               )}
-              {/* Filter toggle â€” shown on mobile, hidden on md+ */}
+              {/* Filter toggle shown on mobile, hidden on md+ */}
               <button
                 onClick={() => setShowFilters((v) => !v)}
                 className="flex items-center gap-1.5 px-3 py-2 border border-[#E2DDD8] rounded-xl bg-white text-[#6B5744] text-sm font-medium hover:bg-[#FAF6F2] hover:border-[#A07850] transition-all md:hidden"
@@ -1593,7 +1637,7 @@ export default function Inventory() {
                 <Filter className="w-3.5 h-3.5" />
                 <span>Filter</span>
               </button>
-              {/* Category selector â€” always visible on md+ */}
+              {/* Category selector always visible on md+ */}
               <div className="hidden md:flex items-center gap-3">
                 <span className="text-xs text-[#9E8A7A] font-medium whitespace-nowrap">Category:</span>
                 <div className="w-40">
@@ -1643,7 +1687,7 @@ export default function Inventory() {
               </div>
             </div>
           </div>
-          {/* Expandable filter row â€” mobile only */}
+          {/* Expandable filter row for mobile only */}
           {showFilters && (
             <div className="mt-3 flex flex-col gap-2 md:hidden">
               <span className="text-xs text-[#9E8A7A] font-medium">Category:</span>
@@ -1697,7 +1741,7 @@ export default function Inventory() {
           onSelectedChange={setSelectedItems}
         />
 
-        {/* â”€â”€ Mobile Card List (< md) â”€â”€ */}
+        {/* Mobile card list (< md) */}
         <InventoryMobileList
           isLoading={isLoadingItems}
           items={paginatedItems}
@@ -1710,7 +1754,7 @@ export default function Inventory() {
         {/* Pagination */}
         <div className="flex justify-between items-center px-4 sm:px-5 py-3.5 border-t border-[#F0EDE8] bg-[#FDFCFB]">
           <p className="text-xs text-[#A89080]">
-            Showing <strong className="text-[#3D261D]">{filteredItems.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}â€“{Math.min(currentPage * itemsPerPage, filteredItems.length)}</strong> of{' '}
+            Showing <strong className="text-[#3D261D]">{filteredItems.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredItems.length)}</strong> of{' '}
             <strong className="text-[#3D261D]">{filteredItems.length}</strong> items
           </p>
           <div className="flex items-center gap-2">
@@ -1735,7 +1779,7 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* â”€â”€ Recent Activity Section â”€â”€ */}
+      {/* Recent activity section */}
       <div className="mt-6 sm:mt-8 bg-white rounded-2xl border border-[#EAE5E0] shadow-sm overflow-hidden">
         <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-[#F0EDE8] bg-[#FDFCFB]">
           <h3 className="text-sm font-bold text-[#1C100A]">Recent Activity</h3>
@@ -1842,7 +1886,7 @@ export default function Inventory() {
         )}
       </div>
 
-      {/* â”€â”€ Footer â”€â”€ */}
+      {/* Footer */}
         </>
       ) : (
         <InventoryHistoryPanel
@@ -1865,7 +1909,7 @@ export default function Inventory() {
 
       <div className="mt-6 sm:mt-8 pt-4 sm:pt-5 border-t border-[#E8E3DD] text-center">
         <p className="text-[11px] text-[#C4B8B0]">
-          Â© 2026 Coffee &amp; Tea Inventory Systems Â· System Status:{' '}
+          (C) 2026 Coffee &amp; Tea Inventory Systems - System Status:{' '}
           <span className="text-emerald-600 font-semibold">Optimal</span>
         </p>
       </div>
@@ -1880,6 +1924,8 @@ export default function Inventory() {
         onSubmit={handleSubmit}
         inputCls={inputCls}
         btnBrown={btnBrown}
+        conversions={newItem.conversions || []}
+        setConversions={(convs) => setNewItem((prev) => ({ ...prev, conversions: convs }))}
       />
 
       <ActionConfirmModal

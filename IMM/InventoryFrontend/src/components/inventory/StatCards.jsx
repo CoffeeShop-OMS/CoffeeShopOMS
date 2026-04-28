@@ -5,7 +5,7 @@ export default function StatCards({ stats, cards: overrideCards, onCardClick }) 
     { icon: Package, label: 'Total Items', value: stats?.total?.toString() ?? '0', sub: 'Across all categories', accent: '#3D261D', iconBg: 'bg-[#EDE4DC]', iconColor: '#3D261D', action: 'all' },
     { icon: AlertTriangle, label: 'Low Stock', value: stats?.lowCount?.toString() ?? '0', sub: 'Need attention', accent: '#B45309', iconBg: 'bg-amber-100', iconColor: '#B45309', action: 'low-stock' },
     { icon: TrendingDown, label: 'Out of Stock', value: stats?.outCount?.toString() ?? '0', sub: 'Need replenishment', accent: '#DC2626', iconBg: 'bg-red-100', iconColor: '#DC2626', action: 'out-of-stock' },
-    { icon: RefreshCcw, label: 'Inventory Value', value: stats ? `₱${Number(stats.value || 0).toFixed(2)}` : '₱0.00', sub: 'Current valuation', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669', action: 'value' },
+    { icon: RefreshCcw, label: 'Inventory Value', value: stats ? `₱${Number(stats.value || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : '₱0.00', sub: 'Current valuation', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669', action: 'value' },
   ];
 
   const cards = overrideCards && overrideCards.length ? overrideCards : defaultCards;

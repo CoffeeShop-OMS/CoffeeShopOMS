@@ -1,4 +1,7 @@
-import { Archive, ArrowDown, ArrowUp, Edit2, RotateCcw } from 'lucide-react';
+import { Archive, ArrowDown, ArrowUp, Edit2, RotateCcw, ChevronDown } from 'lucide-react';
+import { formatInventoryDateLabel, getDisplayInventoryBatches } from '../../utils/inventoryBatches';
+import { useState } from 'react';
+import { getAlternativeStockLevels } from '../../utils/inventoryConversionHelpers';
 
 const categoryColors = {
   Beans: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-400', border: 'border-amber-200' },
@@ -18,6 +21,18 @@ export default function InventoryMobileList({
   onRestore,
   onQuickAdjust,
 }) {
+  const [expandedItems, setExpandedItems] = useState(new Set());
+
+  const toggleExpanded = (itemId) => {
+    const newExpanded = new Set(expandedItems);
+    if (newExpanded.has(itemId)) {
+      newExpanded.delete(itemId);
+    } else {
+      newExpanded.add(itemId);
+    }
+    setExpandedItems(newExpanded);
+  };
+
   if (!Array.isArray(items)) return null;
 
   return (
@@ -29,6 +44,14 @@ export default function InventoryMobileList({
       ) : (
         items.map((item) => {
           const cc = categoryColors[item.cat] || categoryColors.Other;
+          const expiredBatchDetails = getDisplayInventoryBatches(item)
+            .map((batch, index) => ({ ...batch, batchNumber: index + 1 }))
+            .filter((batch) => batch.isExpired);
+          const earliestExpiredBatchDate =
+            expiredBatchDetails
+              .map((batch) => batch.expirationDate)
+              .filter(Boolean)
+              .sort()[0] || item.expirationDate || '';
           return (
             <div
               key={item.id}
@@ -39,10 +62,17 @@ export default function InventoryMobileList({
                   <p className="text-sm font-semibold text-[#1C100A] truncate">{item.name}</p>
                   <p className="text-[11px] text-[#C4B8B0] font-mono mt-0.5 truncate">{item.sku}</p>
                   {item.hasExpiredStock && (
-                    <p className="mt-1 text-[11px] font-medium text-rose-600 truncate">
-                      {item.expiredQuantity} {item.unit} expired
-                      {item.expirationDate ? ` - since ${item.expirationDate}` : ''}
-                    </p>
+                    <div className="mt-1">
+                      <p className="text-[11px] font-semibold text-rose-700">
+                        Expired: {item.expiredQuantity} {item.unit}
+                        {expiredBatchDetails.length > 0 ? ` in ${expiredBatchDetails.length} batch${expiredBatchDetails.length === 1 ? '' : 'es'}` : ''}
+                      </p>
+                      {earliestExpiredBatchDate && (
+                        <p className="text-[10px] text-rose-500">
+                          Oldest expired batch: {formatInventoryDateLabel(earliestExpiredBatchDate)}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="flex shrink-0 flex-wrap justify-end gap-1">
@@ -53,11 +83,6 @@ export default function InventoryMobileList({
                       : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
                     {item.status}
                   </span>
-                  {item.hasExpiredStock && !item.isArchived && (
-                    <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide bg-rose-50 text-rose-700 border border-rose-200">
-                      Expired batch
-                    </span>
-                  )}
                 </div>
               </div>
 
@@ -66,9 +91,34 @@ export default function InventoryMobileList({
                   <span className={`w-1.5 h-1.5 rounded-full ${cc.dot}`} />
                   {item.cat}
                 </span>
-                <span className={`text-sm font-bold ${item.isArchived ? 'text-slate-500' : item.hasExpiredStock ? 'text-rose-700' : item.isOut ? 'text-red-500' : item.isLow ? 'text-amber-600' : 'text-[#1C100A]'}`}>
-                  {item.stock}
-                </span>
+                <div className="flex flex-col gap-1">
+                  <span className={`text-sm font-bold ${item.isArchived ? 'text-slate-500' : item.hasExpiredStock ? 'text-rose-700' : item.isOut ? 'text-red-500' : item.isLow ? 'text-amber-600' : 'text-[#1C100A]'}`}>
+                    {item.stock}
+                  </span>
+                  {item.conversions && item.conversions.length > 0 && (
+                    <button
+                      onClick={() => toggleExpanded(item.id)}
+                      className="flex items-center gap-1 text-[10px] text-[#6B5744] hover:text-[#3D261D] transition"
+                      title="View alternative units"
+                    >
+                      <ChevronDown className={`w-3 h-3 transition-transform ${expandedItems.has(item.id) ? 'rotate-180' : ''}`} />
+                      {expandedItems.has(item.id) ? 'Hide' : 'Show'} conversions
+                    </button>
+                  )}
+                  {expandedItems.has(item.id) && item.conversions && item.conversions.length > 0 && (
+                    <div className="bg-[#FAF8F5] rounded p-2 space-y-1">
+                      {getAlternativeStockLevels(
+                        parseFloat(item.stock.split(' ')[0]),
+                        item.stock.split(' ')[1],
+                        item.conversions
+                      ).map((alt, idx) => (
+                        <p key={idx} className="text-[10px] text-[#7A6355]">
+                          {alt.quantity.toFixed(3).replace(/\.?0+$/, '')} {alt.unit}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {!item.isArchived && typeof onQuickAdjust === 'function' && (
                   <div className="flex items-center gap-1 rounded-lg border border-[#E9E1DA] bg-[#FCFAF8] p-1">
                     <button
@@ -110,11 +160,11 @@ export default function InventoryMobileList({
                 </div>
                 <div className="bg-[#FAF8F5] rounded-xl px-3 py-2">
                   <p className="text-[9px] text-[#A89080] uppercase tracking-wider font-bold mb-0.5">Curr. Value</p>
-                  <p className="text-xs font-semibold text-emerald-600">₱{item.currentValue.toFixed(2)}</p>
+                  <p className="text-xs font-semibold text-emerald-600">₱{item.currentValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</p>
                 </div>
                 <div className="bg-[#FAF8F5] rounded-xl px-3 py-2">
-                  <p className="text-[9px] text-[#A89080] uppercase tracking-wider font-bold mb-0.5">Max Value</p>
-                  <p className="text-xs font-semibold text-[#3D261D]">₱{item.maxValue.toFixed(2)}</p>
+                  <p className="text-[9px] text-[#A89080] uppercase tracking-wider font-bold mb-0.5">Reorder Value</p>
+                  <p className="text-xs font-semibold text-[#3D261D]">₱{item.reorderValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</p>
                 </div>
               </div>
 

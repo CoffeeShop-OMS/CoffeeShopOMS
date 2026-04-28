@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Package, Truck, BarChart2, Settings, LogOut, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Package, Truck, BarChart2, LogOut, ChevronRight } from 'lucide-react';
 import { clearAuthSession } from '../utils/authStorage';
 import { useState } from 'react';
 import ConfirmModal from './ConfirmModal';
@@ -64,10 +64,6 @@ export default function Sidebar({ setIsAuthenticated, collapsed, setCollapsed, m
                 </div>
 
                 <div className="p-2 space-y-0.5 border-t border-gray-100">
-                    <Link to="/settings" onClick={() => setMobileOpen(false)} className="flex items-center gap-3 px-2.5 py-2.5 text-gray-500 hover:bg-[#3D261D]/10 hover:text-[#3D261D] rounded-lg">
-                        <Settings className="w-4 h-4" />
-                        <span>Settings</span>
-                    </Link>
                     <button onClick={(e) => { e.preventDefault(); setShowLogoutModal(true); setMobileOpen(false); }} className="flex items-center gap-3 px-2.5 py-2.5 text-red-400 hover:text-red-600 rounded-lg">
                         <LogOut className="w-4 h-4" />
                         <span>Logout</span>

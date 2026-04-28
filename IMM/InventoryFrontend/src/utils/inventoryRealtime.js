@@ -76,6 +76,7 @@ const toRawInventoryShapeFromUi = (item = {}) => ({
   isLowStock: item.isLow ?? false,
   expirationDate: item.expirationDate || null,
   stockBatches: Array.isArray(item.stockBatches) ? item.stockBatches : [],
+  conversions: Array.isArray(item.conversions) ? item.conversions : [],
   createdAt: item.dateAdded,
   updatedAt: item.lastActivity || item.date,
 });
@@ -134,7 +135,8 @@ export const mapInventoryItemToUi = (item) => {
     stockBatches: Array.isArray(item.stockBatches) ? item.stockBatches : [],
     recordStatus: item.status || "active",
     currentValue: quantity * costPrice,
-    maxValue: threshold * costPrice,
+    reorderValue: threshold * costPrice,
+    conversions: Array.isArray(item.conversions) ? item.conversions : [],
   };
 };
 

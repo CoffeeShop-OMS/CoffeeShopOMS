@@ -12,6 +12,8 @@ const normalizeInventoryDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 };
 
+const QUANTITY_PRECISION = 1000;
+
 const getTodayDateString = () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -26,16 +28,33 @@ export const isExpiredInventoryDate = (value) => {
   return normalizedDate <= getTodayDateString();
 };
 
-const toWholeQuantity = (value) => {
-  const parsed = Number.parseInt(value ?? 0, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+const toPositiveQuantity = (value) => {
+  const parsed = Number.parseFloat(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.round(parsed * QUANTITY_PRECISION) / QUANTITY_PRECISION;
+};
+
+const toDisplayBatch = (batch = {}, fallbackId = "batch") => {
+  const quantity = toPositiveQuantity(batch?.quantity);
+  if (quantity <= 0) return null;
+
+  const expirationDate = normalizeInventoryDate(batch?.expirationDate);
+  const receivedAt = normalizeInventoryDate(batch?.receivedAt || batch?.createdAt);
+
+  return {
+    id: batch?.id || fallbackId,
+    quantity,
+    expirationDate,
+    receivedAt,
+    isExpired: expirationDate ? isExpiredInventoryDate(expirationDate) : false,
+  };
 };
 
 export const summarizeInventoryBatches = (item = {}) => {
   const stockBatches = Array.isArray(item.stockBatches) ? item.stockBatches : [];
 
   if (stockBatches.length === 0) {
-    const totalQuantity = toWholeQuantity(item.quantity);
+    const totalQuantity = toPositiveQuantity(item.quantity);
     const expiredQuantity = isExpiredInventoryDate(item.expirationDate) ? totalQuantity : 0;
 
     return {
@@ -52,7 +71,7 @@ export const summarizeInventoryBatches = (item = {}) => {
   let earliestExpiredDate = null;
 
   stockBatches.forEach((batch) => {
-    const batchQuantity = toWholeQuantity(batch?.quantity);
+    const batchQuantity = toPositiveQuantity(batch?.quantity);
     if (batchQuantity <= 0) return;
 
     totalQuantity += batchQuantity;
@@ -83,7 +102,7 @@ export const summarizeInventoryAfterAddition = (
   addedExpirationDate = null
 ) => {
   const currentSummary = summarizeInventoryBatches(item);
-  const normalizedAddedQuantity = toWholeQuantity(addedQuantity);
+  const normalizedAddedQuantity = toPositiveQuantity(addedQuantity);
   const addedIsExpired =
     normalizedAddedQuantity > 0 && isExpiredInventoryDate(addedExpirationDate);
 
@@ -99,6 +118,53 @@ export const summarizeInventoryAfterAddition = (
     nonExpiredQuantityAfterAdd: Math.max(totalQuantityAfterAdd - expiredQuantityAfterAdd, 0),
     totalQuantityAfterAdd,
   };
+};
+
+export const getDisplayInventoryBatches = (item = {}) => {
+  const explicitBatches = Array.isArray(item.stockBatches)
+    ? item.stockBatches
+        .map((batch, index) =>
+          toDisplayBatch(batch, `${item.id || "item"}-batch-${index + 1}`)
+        )
+        .filter(Boolean)
+    : [];
+
+  if (explicitBatches.length > 0) {
+    return explicitBatches;
+  }
+
+  const quantity = toPositiveQuantity(item.quantity);
+  if (quantity <= 0) return [];
+
+  const seededBatch = toDisplayBatch(
+    {
+      id: `${item.id || "item"}-seed`,
+      quantity,
+      expirationDate: item.expirationDate || null,
+      receivedAt: item.receivedAt || item.updatedAt || item.createdAt || null,
+    },
+    `${item.id || "item"}-seed`
+  );
+
+  return seededBatch ? [seededBatch] : [];
+};
+
+export const formatInventoryDateLabel = (value) => {
+  const normalizedDate = normalizeInventoryDate(value);
+  if (!normalizedDate) return "";
+
+  const [year, month, day] = normalizedDate.split("-").map(Number);
+  const displayDate = new Date(year, month - 1, day);
+
+  if (Number.isNaN(displayDate.getTime())) {
+    return normalizedDate;
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(displayDate);
 };
 
 export { normalizeInventoryDate, getTodayDateString };

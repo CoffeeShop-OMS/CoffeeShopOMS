@@ -28,13 +28,15 @@ import {
   PieChart as RechartsPie,
   Pie,
   Cell,
-  Legend,
 } from 'recharts';
 import StatCards from '../components/inventory/StatCards';
+import PdfExportModal from '../components/reports/PdfExportModal';
 import { getInventory, getInventoryLogs } from '../services/api';
 import { getAuthSession } from '../utils/authStorage';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import { summarizeInventoryBatches } from '../utils/inventoryBatches';
+import { downloadReportsPdf, getGeneratorDisplayName } from '../utils/reportsPdf';
+import { parseTimestamp } from '../utils/inventoryRealtime';
 
 const BRAND = '#3D261D';
 const PESO_SYMBOL = '\u20B1';
@@ -47,6 +49,26 @@ const CATEGORY_COLORS = [
   '#C5A68D',
   '#9A7060',
 ];
+
+const escapeCsvValue = (value) => {
+  const normalizedValue =
+    value === null || value === undefined
+      ? ''
+      : value instanceof Date
+        ? value.toISOString()
+        : String(value);
+
+  return `"${normalizedValue.replace(/"/g, '""')}"`;
+};
+
+const createCsvRow = (cells) => cells.map(escapeCsvValue).join(',');
+
+const getReportItemStatus = (item) => {
+  if (item.hasExpiredStock) return 'Expired';
+  if (item.isOut) return 'Out of Stock';
+  if (item.isLow) return 'Low Stock';
+  return 'Healthy';
+};
 
 const formatCurrency = (value) =>
   `${PESO_SYMBOL}${Number(value || 0).toLocaleString('en-PH', {
@@ -119,6 +141,219 @@ const CustomPieTooltip = ({ active, payload }) => {
   );
 };
 
+const USAGE_PERIOD_OPTIONS = [
+  {
+    value: 'daily',
+    label: 'Daily',
+    chartTitle: 'Daily stock usage',
+    chartSubtitle: 'Adjustments per day - last 14 days',
+    sectionTitle: 'Daily Stock Usage',
+    columnLabel: 'Day',
+    points: 14,
+  },
+  {
+    value: 'weekly',
+    label: 'Weekly',
+    chartTitle: 'Weekly stock usage',
+    chartSubtitle: 'Adjustments per week - last 12 weeks',
+    sectionTitle: 'Weekly Stock Usage',
+    columnLabel: 'Week',
+    points: 12,
+  },
+  {
+    value: 'monthly',
+    label: 'Monthly',
+    chartTitle: 'Monthly stock usage',
+    chartSubtitle: 'Adjustments per month - last 12 months',
+    sectionTitle: 'Monthly Stock Usage',
+    columnLabel: 'Month',
+    points: 12,
+  },
+  {
+    value: 'quarterly',
+    label: 'Quarterly',
+    chartTitle: 'Quarterly stock usage',
+    chartSubtitle: 'Adjustments per quarter - last 8 quarters',
+    sectionTitle: 'Quarterly Stock Usage',
+    columnLabel: 'Quarter',
+    points: 8,
+  },
+  {
+    value: 'yearly',
+    label: 'Yearly',
+    chartTitle: 'Yearly stock usage',
+    chartSubtitle: 'Adjustments per year - last 5 years',
+    sectionTitle: 'Yearly Stock Usage',
+    columnLabel: 'Year',
+    points: 5,
+  },
+];
+
+const getUsagePeriodMeta = (period) =>
+  USAGE_PERIOD_OPTIONS.find((option) => option.value === period) || USAGE_PERIOD_OPTIONS[0];
+
+const toLogDate = (value) => {
+  if (!value) return null;
+
+  try {
+    const parsed = parseTimestamp(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  } catch {
+    return null;
+  }
+};
+
+const startOfDay = (value) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const startOfWeek = (value) => {
+  const date = startOfDay(value);
+  const mondayOffset = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - mondayOffset);
+  return date;
+};
+
+const startOfMonth = (value) => new Date(value.getFullYear(), value.getMonth(), 1);
+
+const startOfQuarter = (value) =>
+  new Date(value.getFullYear(), Math.floor(value.getMonth() / 3) * 3, 1);
+
+const startOfYear = (value) => new Date(value.getFullYear(), 0, 1);
+
+const getUsageBucketStart = (value, period) => {
+  const date = value instanceof Date ? value : new Date(value);
+
+  switch (period) {
+    case 'weekly':
+      return startOfWeek(date);
+    case 'monthly':
+      return startOfMonth(date);
+    case 'quarterly':
+      return startOfQuarter(date);
+    case 'yearly':
+      return startOfYear(date);
+    case 'daily':
+    default:
+      return startOfDay(date);
+  }
+};
+
+const shiftUsageBucket = (value, period, amount) => {
+  const date = new Date(value);
+
+  switch (period) {
+    case 'weekly':
+      date.setDate(date.getDate() + amount * 7);
+      return startOfWeek(date);
+    case 'monthly':
+      date.setMonth(date.getMonth() + amount, 1);
+      return startOfMonth(date);
+    case 'quarterly':
+      date.setMonth(date.getMonth() + amount * 3, 1);
+      return startOfQuarter(date);
+    case 'yearly':
+      date.setFullYear(date.getFullYear() + amount, 0, 1);
+      return startOfYear(date);
+    case 'daily':
+    default:
+      date.setDate(date.getDate() + amount);
+      return startOfDay(date);
+  }
+};
+
+const getUsageBucketKey = (date, period) => {
+  switch (period) {
+    case 'weekly':
+      return `week-${date.toISOString().slice(0, 10)}`;
+    case 'monthly':
+      return `month-${date.getFullYear()}-${date.getMonth() + 1}`;
+    case 'quarterly':
+      return `quarter-${date.getFullYear()}-${Math.floor(date.getMonth() / 3) + 1}`;
+    case 'yearly':
+      return `year-${date.getFullYear()}`;
+    case 'daily':
+    default:
+      return `day-${date.toISOString().slice(0, 10)}`;
+  }
+};
+
+const formatUsageBucketLabel = (date, period) => {
+  switch (period) {
+    case 'weekly':
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    case 'monthly':
+      return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    case 'quarterly':
+      return `Q${Math.floor(date.getMonth() / 3) + 1} ${date.getFullYear()}`;
+    case 'yearly':
+      return String(date.getFullYear());
+    case 'daily':
+    default:
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+};
+
+const buildUsageSeries = (logs, period) => {
+  const meta = getUsagePeriodMeta(period);
+  const currentBucketStart = getUsageBucketStart(new Date(), period);
+  const buckets = [];
+
+  for (let index = meta.points - 1; index >= 0; index -= 1) {
+    const bucketStart = shiftUsageBucket(currentBucketStart, period, -index);
+    buckets.push({
+      key: getUsageBucketKey(bucketStart, period),
+      label: formatUsageBucketLabel(bucketStart, period),
+      count: 0,
+    });
+  }
+
+  const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+  (Array.isArray(logs) ? logs : []).forEach((log) => {
+    if (log?.action !== 'STOCK_ADJUST') return;
+
+    const logDate = toLogDate(log.createdAt || log.timestamp);
+    if (!logDate) return;
+
+    const bucketStart = getUsageBucketStart(logDate, period);
+    const bucket = bucketMap.get(getUsageBucketKey(bucketStart, period));
+
+    if (bucket) {
+      bucket.count += 1;
+    }
+  });
+
+  return buckets.map(({ label, count }) => ({ label, count }));
+};
+
+const fetchUsageLogs = async (token) => {
+  const collectedLogs = [];
+  let cursor = null;
+
+  for (let batchIndex = 0; batchIndex < 12; batchIndex += 1) {
+    const response = await getInventoryLogs(token, {
+      action: 'STOCK_ADJUST',
+      days: 'all',
+      limit: 100,
+      cursor,
+    });
+    const logs = Array.isArray(response?.data) ? response.data : [];
+
+    collectedLogs.push(...logs);
+
+    if (!response?.nextCursor || logs.length === 0) {
+      break;
+    }
+
+    cursor = response.nextCursor;
+  }
+
+  return collectedLogs;
+};
+
 export default function Reports({ setIsAuthenticated }) {
   const [stats, setStats] = useState({
     totalValue: 0,
@@ -136,8 +371,12 @@ export default function Reports({ setIsAuthenticated }) {
   const [slowMoving, setSlowMoving] = useState([]);
   const [needsAttention, setNeedsAttention] = useState([]);
   const [categoryPerformance, setCategoryPerformance] = useState([]);
-  const [dailyUsage, setDailyUsage] = useState([]);
+  const [usageLogs, setUsageLogs] = useState([]);
+  const [usagePeriod, setUsagePeriod] = useState('daily');
+  const [reportItems, setReportItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -151,8 +390,11 @@ export default function Reports({ setIsAuthenticated }) {
       }
 
       try {
-        const invRes = await getInventory(session.token, { limit: 200, status: 'all' });
-        const logsRes = await getInventoryLogs(session.token, { days: 30, limit: 500 });
+        const [invRes, logsRes, usageHistoryLogs] = await Promise.all([
+          getInventory(session.token, { limit: 200, status: 'all' }),
+          getInventoryLogs(session.token, { days: 30, limit: 500 }),
+          fetchUsageLogs(session.token),
+        ]);
         const items = Array.isArray(invRes?.data) ? invRes.data : [];
         const logs = Array.isArray(logsRes?.data) ? logsRes.data : [];
         if (!mounted) return;
@@ -243,25 +485,6 @@ export default function Reports({ setIsAuthenticated }) {
         const wasteRate =
           totalActiveItems > 0 ? Number(((wasteCount / totalActiveItems) * 100).toFixed(1)) : 0;
 
-        const dayMap = {};
-        const today = new Date();
-        for (let i = 13; i >= 0; i -= 1) {
-          const day = new Date(today);
-          day.setDate(today.getDate() - i);
-          const key = day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          dayMap[key] = 0;
-        }
-
-        logs.forEach((log) => {
-          if (log.action !== 'STOCK_ADJUST') return;
-          const day = new Date(log.createdAt || log.timestamp);
-          const key = day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          if (key in dayMap) {
-            dayMap[key] += 1;
-          }
-        });
-
-        const dailyData = Object.entries(dayMap).map(([day, count]) => ({ day, count }));
         const topMovers = [...itemStats]
           .sort((first, second) => second.adjustmentCount - first.adjustmentCount)
           .slice(0, 5);
@@ -305,7 +528,8 @@ export default function Reports({ setIsAuthenticated }) {
           setSlowMoving(slowMovers);
           setNeedsAttention(attentionList);
           setCategoryPerformance(categoryPerf);
-          setDailyUsage(dailyData);
+          setUsageLogs(Array.isArray(usageHistoryLogs) ? usageHistoryLogs : []);
+          setReportItems(itemStats);
         }
       } catch (error) {
         console.error('Failed to load reports:', error);
@@ -320,6 +544,13 @@ export default function Reports({ setIsAuthenticated }) {
       mounted = false;
     };
   }, []);
+
+  const selectedUsageMeta = useMemo(() => getUsagePeriodMeta(usagePeriod), [usagePeriod]);
+
+  const usageChartData = useMemo(
+    () => buildUsageSeries(usageLogs, usagePeriod),
+    [usageLogs, usagePeriod]
+  );
 
   const healthColor =
     stats.healthScore >= 75 ? '#059669' : stats.healthScore >= 50 ? '#F59E0B' : '#DC2626';
@@ -410,9 +641,176 @@ export default function Reports({ setIsAuthenticated }) {
     stats.totalValue,
   ]);
 
+  const hasReportData = useMemo(
+    () =>
+      reportItems.length > 0 ||
+      categoryPerformance.length > 0 ||
+      usageChartData.some((entry) => Number(entry.count || 0) > 0),
+    [categoryPerformance, reportItems, usageChartData]
+  );
+
+  const handleExportCsv = () => {
+    if (isLoading) {
+      toast.info('Reports are still loading. Try again in a moment.');
+      return;
+    }
+
+    if (!hasReportData) {
+      toast.info('No report data available to export yet.');
+      return;
+    }
+
+    try {
+      const exportedAt = new Date();
+      const csvLines = [
+        createCsvRow(['Inventory Reports Export']),
+        createCsvRow(['Generated At', exportedAt.toLocaleString('en-PH')]),
+        '',
+        createCsvRow(['Summary']),
+        createCsvRow(['Metric', 'Value']),
+        createCsvRow(['Total Inventory Value', stats.totalValue.toFixed(2)]),
+        createCsvRow(['Active Items', stats.activeItems]),
+        createCsvRow(['Low Stock Items', stats.lowStockItems]),
+        createCsvRow(['Out Of Stock Items', stats.outOfStockItems]),
+        createCsvRow(['Expired Items', stats.expiredItems]),
+        createCsvRow(['Items Needing Attention', stats.attentionItems]),
+        createCsvRow(['Stock Turnover', stats.stockTurnover]),
+        createCsvRow(['Waste Rate (%)', stats.wasteRate]),
+        createCsvRow(['Health Score (%)', stats.healthScore]),
+        '',
+        createCsvRow(['Item Details']),
+        createCsvRow([
+          'Item Name',
+          'Category',
+          'Quantity',
+          'Low Stock Threshold',
+          'Cost Price',
+          'Inventory Value',
+          'Adjustment Count',
+          'Status',
+        ]),
+        ...reportItems.map((item) =>
+          createCsvRow([
+            item.name,
+            item.category,
+            item.quantity,
+            item.threshold,
+            item.costPrice.toFixed(2),
+            item.value.toFixed(2),
+            item.adjustmentCount,
+            getReportItemStatus(item),
+          ])
+        ),
+        '',
+        createCsvRow(['Category Performance']),
+        createCsvRow(['Category', 'Items', 'Quantity', 'Value', 'Value Share (%)']),
+        ...categoryPerformance.map((category) =>
+          createCsvRow([
+            category.category,
+            category.items,
+            category.quantity,
+            Number(category.value || 0).toFixed(2),
+            category.percent,
+          ])
+        ),
+        '',
+        createCsvRow([selectedUsageMeta.sectionTitle]),
+        createCsvRow([selectedUsageMeta.columnLabel, 'Adjustments']),
+        ...usageChartData.map((entry) => createCsvRow([entry.label, entry.count])),
+        '',
+        createCsvRow(['Top Moving Items']),
+        createCsvRow(['Item Name', 'Category', 'Adjustment Count', 'Quantity']),
+        ...topMoving.map((item) =>
+          createCsvRow([item.name, item.category, item.adjustmentCount, item.quantity])
+        ),
+        '',
+        createCsvRow(['Slow Moving Items']),
+        createCsvRow(['Item Name', 'Category', 'Adjustment Count', 'Quantity']),
+        ...slowMoving.map((item) =>
+          createCsvRow([item.name, item.category, item.adjustmentCount, item.quantity])
+        ),
+        '',
+        createCsvRow(['Needs Attention']),
+        createCsvRow(['Item Name', 'Category', 'Quantity', 'Threshold', 'Status']),
+        ...needsAttention.map((item) =>
+          createCsvRow([
+            item.name,
+            item.category,
+            item.quantity,
+            item.threshold,
+            getReportItemStatus(item),
+          ])
+        ),
+      ];
+
+      const blob = new Blob([`\uFEFF${csvLines.join('\r\n')}`], {
+        type: 'text/csv;charset=utf-8;',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const fileDate = exportedAt.toISOString().slice(0, 10);
+
+      link.href = url;
+      link.download = `inventory-reports-${fileDate}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Reports CSV exported successfully');
+    } catch (error) {
+      console.error('Failed to export reports CSV:', error);
+      toast.error('Failed to export reports CSV');
+    }
+  };
+
+  const handleOpenPdfModal = () => {
+    if (isLoading) {
+      toast.info('Reports are still loading. Try again in a moment.');
+      return;
+    }
+
+    if (!hasReportData) {
+      toast.info('No report data available to export yet.');
+      return;
+    }
+
+    setIsPdfModalOpen(true);
+  };
+
+  const handleExportPdf = async (mode) => {
+    const session = getAuthSession();
+
+    setIsGeneratingPdf(true);
+
+    try {
+      await downloadReportsPdf({
+        mode,
+        stats,
+        reportItems,
+        categoryPerformance,
+        usageData: usageChartData,
+        usageMeta: selectedUsageMeta,
+        topMoving,
+        slowMoving,
+        needsAttention,
+        generatedBy: getGeneratorDisplayName(session),
+        generatedEmail: session?.email || '',
+      });
+
+      toast.success('Reports PDF exported successfully');
+      setIsPdfModalOpen(false);
+    } catch (error) {
+      console.error('Failed to export reports PDF:', error);
+      toast.error('Failed to export reports PDF');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   return (
-    <div className="w-full p-6 lg:p-8 bg-[#F7F4F0] min-h-screen">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
+    <div className="w-full min-h-screen bg-[#F7F4F0] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start mb-6 sm:mb-8">
         <div>
           <h1
             className="text-xl sm:text-2xl font-bold text-[#1C100A] tracking-tight"
@@ -425,11 +823,21 @@ export default function Reports({ setIsAuthenticated }) {
           </p>
         </div>
 
-        <div className="flex gap-2 shrink-0">
-          <button className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={isLoading}
+            className="flex w-full sm:w-auto items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
             <Download className="w-3.5 h-3.5" /> Export CSV
           </button>
-          <button className="flex items-center gap-2 bg-[#3D261D] text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#2A1A14] transition-colors">
+          <button
+            type="button"
+            onClick={handleOpenPdfModal}
+            disabled={isGeneratingPdf}
+            className="flex w-full sm:w-auto items-center justify-center gap-2 bg-[#3D261D] text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#2A1A14] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
             <Download className="w-3.5 h-3.5" /> Download PDF
           </button>
         </div>
@@ -437,21 +845,49 @@ export default function Reports({ setIsAuthenticated }) {
 
       <StatCards cards={reportStatCards} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-5">
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 lg:col-span-3">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="w-4 h-4 text-[#3D261D]" />
-            <h3 className="font-semibold text-gray-900 text-sm">Daily stock usage</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-5 mb-4 sm:mb-5">
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 lg:col-span-3">
+          <div className="flex flex-col gap-3 sm:gap-4 mb-4">
+            <div className="flex items-center gap-2 min-w-0">
+              <TrendingUp className="w-4 h-4 text-[#3D261D]" />
+              <h3 className="font-semibold text-gray-900 text-sm truncate">
+                {selectedUsageMeta.chartTitle}
+              </h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {USAGE_PERIOD_OPTIONS.map((option) => {
+                const isActive = option.value === usagePeriod;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setUsagePeriod(option.value)}
+                    className={`rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold transition-colors ${
+                      isActive
+                        ? 'bg-[#3D261D] text-white'
+                        : 'bg-[#F6F1EC] text-[#6F5C50] hover:bg-[#EDE4DC]'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <p className="text-xs text-gray-500 mb-4">Adjustments per day - last 14 days</p>
+          <p className="text-xs text-gray-500 mb-4">{selectedUsageMeta.chartSubtitle}</p>
 
           {isLoading ? (
             <div className="h-44 flex items-center justify-center text-sm text-gray-400">
               Loading...
             </div>
+          ) : usageChartData.every((entry) => Number(entry.count || 0) === 0) ? (
+            <div className="h-44 flex items-center justify-center text-sm text-gray-400 text-center px-4">
+              No stock adjustment records found for this period yet.
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height={176}>
-              <AreaChart data={dailyUsage} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <AreaChart data={usageChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={BRAND} stopOpacity={0.12} />
@@ -460,7 +896,7 @@ export default function Reports({ setIsAuthenticated }) {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe6" vertical={false} />
                 <XAxis
-                  dataKey="day"
+                  dataKey="label"
                   tick={{ fontSize: 10, fill: '#9E8A7A' }}
                   tickLine={false}
                   axisLine={false}
@@ -487,7 +923,7 @@ export default function Reports({ setIsAuthenticated }) {
           )}
         </div>
 
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 lg:col-span-2">
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 lg:col-span-2">
           <div className="flex items-center gap-2 mb-1">
             <PieChart className="w-4 h-4 text-[#3D261D]" />
             <h3 className="font-semibold text-gray-900 text-sm">Category split</h3>
@@ -503,13 +939,14 @@ export default function Reports({ setIsAuthenticated }) {
               No data yet
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={180}>
+            <>
+              <ResponsiveContainer width="100%" height={180}>
               <RechartsPie>
                 <Pie
                   data={categoryPerformance}
                   dataKey="value"
                   nameKey="category"
-                  cx="40%"
+                  cx="50%"
                   cy="50%"
                   innerRadius={50}
                   outerRadius={76}
@@ -524,24 +961,26 @@ export default function Reports({ setIsAuthenticated }) {
                   ))}
                 </Pie>
                 <Tooltip content={<CustomPieTooltip />} />
-                <Legend
-                  layout="vertical"
-                  align="right"
-                  verticalAlign="middle"
-                  iconType="square"
-                  iconSize={8}
-                  formatter={(value) => (
-                    <span style={{ fontSize: 11, color: '#5a4a40' }}>{value}</span>
-                  )}
-                />
               </RechartsPie>
             </ResponsiveContainer>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {categoryPerformance.map((entry, index) => (
+                  <div key={entry.category} className="flex items-center gap-2 min-w-0">
+                    <span
+                      className="h-2.5 w-2.5 rounded-sm flex-shrink-0"
+                      style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }}
+                    />
+                    <span className="text-[11px] text-[#5a4a40] truncate">{entry.category}</span>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 lg:col-span-1">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 mb-4 sm:mb-5">
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 lg:col-span-1">
           <div className="flex items-center gap-2 mb-1">
             <BarChart2 className="w-4 h-4 text-[#3D261D]" />
             <h3 className="font-semibold text-gray-900 text-sm">Category value</h3>
@@ -557,7 +996,7 @@ export default function Reports({ setIsAuthenticated }) {
               <BarChart
                 data={categoryPerformance}
                 layout="vertical"
-                margin={{ top: 0, right: 8, left: 0, bottom: 0 }}
+                margin={{ top: 0, right: 8, left: 8, bottom: 0 }}
                 barSize={12}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe6" horizontal={false} />
@@ -574,7 +1013,7 @@ export default function Reports({ setIsAuthenticated }) {
                   tick={{ fontSize: 10, fill: '#5a4a40' }}
                   tickLine={false}
                   axisLine={false}
-                  width={56}
+                  width={68}
                 />
                 <Tooltip content={<CustomBarTooltip />} />
                 <Bar dataKey="value" fill={BRAND} radius={[0, 4, 4, 0]} />
@@ -583,7 +1022,7 @@ export default function Reports({ setIsAuthenticated }) {
           )}
         </div>
 
-        <div className="bg-white border border-gray-100 rounded-2xl p-5">
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5">
           <div className="flex items-center gap-2 mb-1">
             <Zap className="w-4 h-4 text-emerald-500" />
             <h3 className="font-semibold text-gray-900 text-sm">Top moving items</h3>
@@ -622,7 +1061,7 @@ export default function Reports({ setIsAuthenticated }) {
           )}
         </div>
 
-        <div className="bg-white border border-gray-100 rounded-2xl p-5">
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5">
           <div className="flex items-center gap-2 mb-1">
             <ShoppingCart className="w-4 h-4 text-red-500" />
             <h3 className="font-semibold text-gray-900 text-sm">Needs attention</h3>
@@ -666,8 +1105,8 @@ export default function Reports({ setIsAuthenticated }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-8">
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 lg:col-span-3">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-5 mb-8">
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 lg:col-span-3">
           <div className="flex items-center gap-2 mb-1">
             <TrendingDown className="w-4 h-4 text-amber-500" />
             <h3 className="font-semibold text-gray-900 text-sm">Slow moving items</h3>
@@ -704,7 +1143,7 @@ export default function Reports({ setIsAuthenticated }) {
           )}
         </div>
 
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 lg:col-span-2 flex flex-col">
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 lg:col-span-2 flex flex-col">
           <div className="flex items-center gap-2 mb-1">
             <CheckCircle className="w-4 h-4 text-emerald-500" />
             <h3 className="font-semibold text-gray-900 text-sm">Stock health</h3>
@@ -785,6 +1224,13 @@ export default function Reports({ setIsAuthenticated }) {
           <span className="text-emerald-500 font-medium">Optimal</span>
         </p>
       </div>
+
+      <PdfExportModal
+        open={isPdfModalOpen}
+        isGenerating={isGeneratingPdf}
+        onClose={() => setIsPdfModalOpen(false)}
+        onSelect={handleExportPdf}
+      />
     </div>
   );
 }
