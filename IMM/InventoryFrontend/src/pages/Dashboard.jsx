@@ -138,7 +138,9 @@ export default function Dashboard({ setIsAuthenticated }) {
           const quantity = Number(item.quantity || 0);
           const threshold = Number(item.lowStockThreshold || 0);
           const costPrice = Number(item.costPrice || 0);
+          const batchCost = Number(item.totalBatchCost);
           const isArchived = (item.status || 'active') === 'deleted';
+          const itemValue = Number.isFinite(batchCost) ? batchCost : quantity * costPrice;
 
           if (isArchived) {
             archivedCount += 1;
@@ -151,7 +153,7 @@ export default function Dashboard({ setIsAuthenticated }) {
               alerts.push({ ...item, severity: 'warning' });
             }
 
-            value += quantity * costPrice;
+            value += itemValue;
           }
         });
 

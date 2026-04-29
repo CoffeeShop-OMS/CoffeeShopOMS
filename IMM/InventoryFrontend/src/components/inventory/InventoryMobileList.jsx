@@ -159,7 +159,7 @@ export default function InventoryMobileList({
                   <p className="text-xs font-semibold text-[#7A6355]">{item.reorder}</p>
                 </div>
                 <div className="bg-[#FAF8F5] rounded-xl px-3 py-2">
-                  <p className="text-[9px] text-[#A89080] uppercase tracking-wider font-bold mb-0.5">Total Batch Cost</p>
+                  <p className="text-[9px] text-[#A89080] uppercase tracking-wider font-bold mb-0.5">Total Value</p>
                   <p className="text-xs font-semibold text-emerald-600">₱{item.totalBatchCost.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</p>
                 </div>
                 <div className="bg-[#FAF8F5] rounded-xl px-3 py-2">

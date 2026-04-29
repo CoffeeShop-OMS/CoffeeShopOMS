@@ -3,6 +3,14 @@
     "production": "coffeeteaconnection",
     "productionfrontend": "coffeeteaconnection"
   },
-  "targets": {},
+  "targets": {
+    "coffeeteaconnection": {
+      "hosting": {
+        "imm": [
+          "imm"
+        ]
+      }
+    }
+  },
   "etags": {}
 }

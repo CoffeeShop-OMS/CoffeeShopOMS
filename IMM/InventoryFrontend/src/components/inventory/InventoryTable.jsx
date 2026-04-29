@@ -69,7 +69,7 @@ export default function InventoryTable({
             <th className="w-12 text-center px-4 py-3">
               <input type="checkbox" checked={allSelected} onChange={handleSelectAll} className="accent-[#3D261D] rounded" />
             </th>
-            {['Item', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Total Batch Cost', 'Total Batches', 'Date Added', 'Last Activity', 'Status', 'Actions'].map((h) => (
+            {['Item', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Total Value', 'Total Batches', 'Date Added', 'Last Activity', 'Status', 'Actions'].map((h) => (
               <th key={h} className="px-4 py-3 text-left text-[10px] font-bold text-[#A89080] uppercase tracking-widest whitespace-nowrap">{h}</th>
             ))}
           </tr>

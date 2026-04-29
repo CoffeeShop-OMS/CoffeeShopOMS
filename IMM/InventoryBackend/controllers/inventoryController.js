@@ -6,6 +6,7 @@ const {
   addStockBatch,
   consumeStockBatches,
   resetStockBatches,
+  normalizeStockBatches,
 } = require("../services/stockBatchService");
 
 const COLLECTION = "inventory";
@@ -312,13 +313,50 @@ const updateItem = async (req, res) => {
     if (category !== undefined) updates.category = categoryToBackend[category] || category.toLowerCase();
     if (unit !== undefined) updates.unit = nextUnit;
     if (supplier !== undefined) updates.supplier = supplier;
-    if (totalBatchCost !== undefined) updates.totalBatchCost = parseFloat(totalBatchCost);
+    if (totalBatchCost !== undefined) {
+      // For editing existing items, update the current batch cost instead of totalBatchCost
+      const parsedBatchCost = parseFloat(totalBatchCost);
+      
+      // Find the most recent batch with stock and update its cost
+      const currentBatches = normalizeStockBatches(current);
+      if (currentBatches.length > 0) {
+        // Sort batches by receivedAt descending (most recent first)
+        const sortedBatches = [...currentBatches].sort((a, b) => 
+          new Date(b.receivedAt || 0) - new Date(a.receivedAt || 0)
+        );
+        
+        // Update the cost of the most recent batch
+        const mostRecentBatch = sortedBatches[0];
+        const updatedBatches = currentBatches.map(batch => 
+          batch.id === mostRecentBatch.id 
+            ? { ...batch, cost: parsedBatchCost }
+            : batch
+        );
+        
+        // Recalculate total batch cost as sum of all batch costs
+        const newTotalBatchCost = updatedBatches.reduce((sum, batch) => sum + Number(batch.cost || 0), 0);
+        
+        updates.totalBatchCost = newTotalBatchCost;
+        updates.stockBatches = updatedBatches;
+      } else {
+        // Fallback to item-level totalBatchCost if no batches exist
+        updates.totalBatchCost = parsedBatchCost;
+      }
+    }
     if (batchQuantity !== undefined) updates.batchQuantity = parseFloat(batchQuantity);
     if (totalBatchCost !== undefined || batchQuantity !== undefined) {
-      const finalTotalBatchCost = totalBatchCost !== undefined ? parseFloat(totalBatchCost) : current.totalBatchCost;
       const finalBatchQuantity = batchQuantity !== undefined ? parseFloat(batchQuantity) : current.batchQuantity;
-      const costPerUnit = (finalTotalBatchCost && finalBatchQuantity) ? finalTotalBatchCost / finalBatchQuantity : null;
-      updates.costPrice = costPerUnit;
+      
+      if (totalBatchCost !== undefined) {
+        // Cost per unit is calculated as current batch cost / batch quantity
+        const costPerUnit = (finalBatchQuantity && finalBatchQuantity > 0) ? parseFloat(totalBatchCost) / finalBatchQuantity : null;
+        updates.costPrice = costPerUnit;
+      } else {
+        // If only batchQuantity changed, recalculate cost per unit using current totalBatchCost
+        const finalTotalBatchCost = current.totalBatchCost;
+        const costPerUnit = (finalTotalBatchCost && finalBatchQuantity && finalBatchQuantity > 0) ? finalTotalBatchCost / finalBatchQuantity : null;
+        updates.costPrice = costPerUnit;
+      }
     }
     if (conversions !== undefined) updates.conversions = Array.isArray(conversions) ? conversions : [];
 

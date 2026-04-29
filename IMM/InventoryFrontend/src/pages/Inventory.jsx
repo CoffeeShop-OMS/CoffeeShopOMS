@@ -72,7 +72,7 @@ const exportToCSV = (items) => {
     return;
   }
 
-  const headers = ['Item Name', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Unit Cost', 'Total Batch Cost', 'Total Batches', 'Status', 'Last Updated'];
+  const headers = ['Item Name', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Unit Cost', 'Total Value', 'Total Batches', 'Status', 'Last Updated'];
   const rows = items.map((item) => [
     item.name,
     item.sku,
@@ -600,7 +600,7 @@ export default function Inventory() {
       { icon: AlertTriangle, label: 'Low Stock', value: stats?.lowCount?.toString() ?? '0', sub: 'Need attention', accent: '#B45309', iconBg: 'bg-amber-100', iconColor: '#B45309' },
       { icon: TrendingDown, label: 'Out of Stock', value: stats?.outCount?.toString() ?? '0', sub: 'Need replenishment', accent: '#DC2626', iconBg: 'bg-red-100', iconColor: '#DC2626' },
       { icon: Archive, label: 'Archived', value: stats?.archivedCount?.toString() ?? '0', sub: 'Hidden from active inventory', accent: '#6B7280', iconBg: 'bg-slate-100', iconColor: '#475569' },
-      { icon: DollarSign, label: 'Total Batch Cost', value: stats ? `${PESO_SYMBOL}${Number(stats.value || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : `${PESO_SYMBOL}0.00`, sub: 'Current inventory batch cost', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669' },
+      { icon: DollarSign, label: 'Total Value', value: stats ? `${PESO_SYMBOL}${Number(stats.value || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : `${PESO_SYMBOL}0.00`, sub: 'Current inventory value', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669' },
     ],
     [stats]
   );
@@ -1013,6 +1013,20 @@ export default function Inventory() {
   };
 
   const handleUpdateClick = (item) => {
+    // Find the current batch cost - use the most recent batch with a cost
+    let currentBatchCost = '';
+    if (item.stockBatches && item.stockBatches.length > 0) {
+      // Sort batches by receivedAt descending (most recent first)
+      const sortedBatches = [...item.stockBatches].sort((a, b) => 
+        new Date(b.receivedAt || 0) - new Date(a.receivedAt || 0)
+      );
+      // Find the first batch that has a cost
+      const batchWithCost = sortedBatches.find(batch => batch.cost !== undefined && batch.cost !== null);
+      if (batchWithCost) {
+        currentBatchCost = batchWithCost.cost.toString();
+      }
+    }
+
     setDrawerMode('edit');
     setNewItem({
       id: item.id,
@@ -1020,7 +1034,7 @@ export default function Inventory() {
       itemName: item.name,
       category: item.cat,
       unit: item.unit || item.stock.split(' ')[1] || 'pcs',
-      totalBatchCost: item.totalBatchCost ? item.totalBatchCost.toString() : '',
+      totalBatchCost: currentBatchCost || (item.totalBatchCost ? item.totalBatchCost.toString() : ''),
       batchQuantity: item.batchQuantity ? item.batchQuantity.toString() : '',
       minimumStock: item.threshold.toString(),
       expirationDate: item.expirationDate || '',
@@ -1172,6 +1186,20 @@ export default function Inventory() {
       return;
     }
 
+    // Find the current batch cost - use the most recent batch with a cost
+    let currentBatchCost = '';
+    if (item.stockBatches && item.stockBatches.length > 0) {
+      // Sort batches by receivedAt descending (most recent first)
+      const sortedBatches = [...item.stockBatches].sort((a, b) => 
+        new Date(b.receivedAt || 0) - new Date(a.receivedAt || 0)
+      );
+      // Find the first batch that has a cost
+      const batchWithCost = sortedBatches.find(batch => batch.cost !== undefined && batch.cost !== null);
+      if (batchWithCost) {
+        currentBatchCost = batchWithCost.cost.toString();
+      }
+    }
+
     setStockAdjustDraft({
       item,
       direction,
@@ -1179,7 +1207,7 @@ export default function Inventory() {
     });
     setStockAdjustQuantity('1');
     setStockAdjustExpirationDate('');
-    setStockAdjustBatchCost('');
+    setStockAdjustBatchCost(currentBatchCost);
   };
 
   const submitQuickStockAdjust = async () => {
@@ -1356,15 +1384,15 @@ export default function Inventory() {
       return;
     }
     if (!newItem.totalBatchCost || isNaN(totalBatchCost)) {
-      toast.error('Total batch cost is required and must be a valid number.');
+      toast.error('Current batch cost is required and must be a valid number.');
       return;
     }
     if (totalBatchCost < 0) {
-      toast.error('Total batch cost cannot be negative.');
+      toast.error('Current batch cost cannot be negative.');
       return;
     }
     if (totalBatchCost > 9999999) {
-      toast.error('Total batch cost is too high.');
+      toast.error('Current batch cost is too high.');
       return;
     }
     if (!newItem.batchQuantity || isNaN(batchQuantity)) {
@@ -1516,6 +1544,8 @@ export default function Inventory() {
           category: categoryToBackend[action.payload.category] || 'other',
           unit: action.payload.unit,
           lowStockThreshold: action.payload.minimumStock,
+          totalBatchCost: action.payload.totalBatchCost,
+          batchQuantity: action.payload.batchQuantity,
           costPrice: action.payload.costPerUnit,
         });
 

@@ -1,4 +1,4 @@
-const { onRequest } = require("firebase-functions/v2/https");
+const functions = require("firebase-functions");
 const app = require("./app");
 
-exports.api = onRequest(app);
+exports.api = functions.https.onRequest(app);

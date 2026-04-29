@@ -418,7 +418,8 @@ export default function Reports({ setIsAuthenticated }) {
           const quantity = Number(item.quantity || 0);
           const threshold = Number(item.lowStockThreshold || 0);
           const costPrice = Number(item.costPrice || 0);
-          const value = quantity * costPrice;
+          const batchCost = Number(item.totalBatchCost);
+          const value = Number.isFinite(batchCost) ? batchCost : quantity * costPrice;
           const batchSummary = summarizeInventoryBatches(item);
           const hasExpiredStock = batchSummary.hasExpiredStock;
           const isOut = quantity <= 0;

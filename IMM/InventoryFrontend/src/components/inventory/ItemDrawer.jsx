@@ -218,7 +218,7 @@ export default function ItemDrawer({
   const fields = isEditMode
     ? [
         { label: 'Stock Name', field: 'itemName', type: 'text', placeholder: 'e.g. Arabica Beans' },
-        { label: 'Total Batch Cost', field: 'totalBatchCost', type: 'number', placeholder: 'e.g. 500' },
+        { label: 'Current Batch Cost', field: 'totalBatchCost', type: 'number', placeholder: 'e.g. 500' },
         { label: 'Batch Quantity', field: 'batchQuantity', type: 'number', placeholder: 'e.g. 10' },
         { label: 'Minimum Stock', field: 'minimumStock', type: 'number', placeholder: 'e.g. 50' },
       ]
