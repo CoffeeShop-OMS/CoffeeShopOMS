@@ -98,17 +98,21 @@ const timestampsWithinWindow = (first, second) => {
 };
 
 export const mapInventoryItemToUi = (item) => {
-  const quantity = Number(item.quantity ?? 0);
+  const batchSummary = summarizeInventoryBatches(item);
+  const quantity = Number.isFinite(batchSummary.totalQuantity)
+    ? batchSummary.totalQuantity
+    : Number(item.quantity ?? 0);
   const threshold = Number(item.lowStockThreshold ?? 0);
   const isArchived = (item.status || "active") === "deleted";
   const isOut = quantity <= 0;
   const isLow = !isArchived && !isOut && (item.isLowStock ?? quantity <= threshold);
   const costPrice = Number(item.costPrice || 0);
   const unit = item.unit || "";
+  const batchCost = Number(item.totalBatchCost ?? NaN);
+  const batchQuantity = Number(item.batchQuantity ?? 0);
   const dateAdded = formatFirestoreDate(item.createdAt);
   const lastActivity = formatFirestoreDate(item.updatedAt || item.createdAt);
   const expirationDate = formatFirestoreDate(item.expirationDate);
-  const batchSummary = summarizeInventoryBatches(item);
 
   return {
     id: item.id,
@@ -132,23 +136,29 @@ export const mapInventoryItemToUi = (item) => {
     threshold,
     unit,
     costPrice,
+    totalBatchCost: Number.isFinite(batchCost) ? batchCost : 0,
+    batchQuantity,
     stockBatches: Array.isArray(item.stockBatches) ? item.stockBatches : [],
     recordStatus: item.status || "active",
-    currentValue: quantity * costPrice,
-    reorderValue: threshold * costPrice,
+    currentValue: Number.isFinite(batchCost) ? batchCost : quantity * costPrice,
+    reorderValue: Number.isFinite(batchCost) && batchQuantity > 0
+      ? (threshold / batchQuantity) * batchCost
+      : threshold * costPrice,
     conversions: Array.isArray(item.conversions) ? item.conversions : [],
   };
 };
 
 export const mapInventoryItemToAlertUi = (item) => {
-  const quantity = Number(item.quantity ?? 0);
+  const batchSummary = summarizeInventoryBatches(item);
+  const quantity = Number.isFinite(batchSummary.totalQuantity)
+    ? batchSummary.totalQuantity
+    : Number(item.quantity ?? 0);
   const threshold = Number(item.lowStockThreshold ?? 0);
   const unit = item.unit || "";
   const isArchived = (item.status || "active") === "deleted";
   const isOut = quantity <= 0;
   const isLow = !isArchived && !isOut && quantity <= threshold;
   const expirationDate = formatFirestoreDate(item.expirationDate);
-  const batchSummary = summarizeInventoryBatches(item);
 
   return {
     id: item.id,

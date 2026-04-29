@@ -52,12 +52,18 @@ const normalizeSingleBatch = (batch = {}, fallbackReceivedAt, fallbackId) => {
   const quantity = normalizeQuantityValue(batch.quantity);
   if (!Number.isFinite(quantity) || quantity <= QUANTITY_EPSILON) return null;
 
-  return {
+  const normalizedBatch = {
     id: batch.id || fallbackId || generateBatchId(),
     quantity,
     expirationDate: normalizeDateValue(batch.expirationDate),
     receivedAt: normalizeReceivedAt(batch.receivedAt || batch.createdAt, fallbackReceivedAt),
   };
+
+  if (batch.cost !== undefined && batch.cost !== null && Number.isFinite(Number(batch.cost))) {
+    normalizedBatch.cost = Number(batch.cost);
+  }
+
+  return normalizedBatch;
 };
 
 const normalizeStockBatches = (item = {}, { seedFromItem = true } = {}) => {
@@ -144,7 +150,8 @@ const addStockBatch = (
   item = {},
   additionQuantity,
   expirationDate = null,
-  receivedAt = new Date().toISOString()
+  receivedAt = new Date().toISOString(),
+  batchCost = null
 ) => {
   const parsedQuantity = normalizeQuantityValue(additionQuantity);
   const currentBatches = normalizeStockBatches(item);
@@ -161,6 +168,7 @@ const addStockBatch = (
     quantity: parsedQuantity,
     expirationDate: normalizeDateValue(expirationDate),
     receivedAt: normalizeReceivedAt(receivedAt),
+    ...(batchCost !== null && Number.isFinite(batchCost) ? { cost: batchCost } : {}),
   };
 
   const summary = summarizeStockBatches(

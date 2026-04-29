@@ -72,7 +72,7 @@ const exportToCSV = (items) => {
     return;
   }
 
-  const headers = ['Item Name', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Unit Cost', 'Current Value', 'Reorder Value', 'Status', 'Last Updated'];
+  const headers = ['Item Name', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Unit Cost', 'Total Batch Cost', 'Total Batches', 'Status', 'Last Updated'];
   const rows = items.map((item) => [
     item.name,
     item.sku,
@@ -81,7 +81,7 @@ const exportToCSV = (items) => {
     item.threshold,
     item.costPrice.toFixed(2),
     item.currentValue.toFixed(2),
-    item.reorderValue.toFixed(2),
+    item.stockBatches?.length || 0,
     item.status,
     item.date,
   ]);
@@ -236,6 +236,7 @@ export default function Inventory() {
   const [stockAdjustDraft, setStockAdjustDraft] = useState(null);
   const [stockAdjustQuantity, setStockAdjustQuantity] = useState('1');
   const [stockAdjustExpirationDate, setStockAdjustExpirationDate] = useState('');
+  const [stockAdjustBatchCost, setStockAdjustBatchCost] = useState('');
   const [isSubmittingStockAdjust, setIsSubmittingStockAdjust] = useState(false);
   const [currentPage,     setCurrentPage]     = useState(1);
   const [selectedItems,   setSelectedItems]   = useState(new Set());
@@ -259,7 +260,7 @@ export default function Inventory() {
   const itemsPerPage = 10;
   const recentActivitiesPerPage = 5;
   const [newItem, setNewItem] = useState({
-    itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '', expirationDate: '', conversions: [],
+    itemName: '', sku: '', category: 'Beans', unit: 'pcs', totalBatchCost: '', batchQuantity: '', minimumStock: '', initialStock: '', expirationDate: '',
   });
 
   const RECENT_ACTIVITIES_STORAGE_KEY = 'inventoryRecentActivities';
@@ -562,8 +563,15 @@ export default function Inventory() {
       lowCount: activeItems.filter((i) => i.isLow).length,
       outCount: activeItems.filter((i) => i.isOut).length,
       archivedCount: archivedItems.length,
-      value: activeItems.reduce((s, i) => s + i.quantity * i.costPrice, 0),
-      reorderValue: activeItems.reduce((s, i) => s + i.threshold * i.costPrice, 0),
+      value: activeItems.reduce((s, i) => s + Number(i.currentValue || 0), 0),
+      reorderValue: activeItems.reduce((s, i) => {
+        const batchCost = Number(i.totalBatchCost || 0);
+        const batchQuantity = Number(i.batchQuantity || 0);
+        if (Number.isFinite(batchCost) && batchQuantity > 0) {
+          return s + (i.threshold / batchQuantity) * batchCost;
+        }
+        return s + i.threshold * i.costPrice;
+      }, 0),
     };
   }, [inventoryItems]);
 
@@ -592,8 +600,7 @@ export default function Inventory() {
       { icon: AlertTriangle, label: 'Low Stock', value: stats?.lowCount?.toString() ?? '0', sub: 'Need attention', accent: '#B45309', iconBg: 'bg-amber-100', iconColor: '#B45309' },
       { icon: TrendingDown, label: 'Out of Stock', value: stats?.outCount?.toString() ?? '0', sub: 'Need replenishment', accent: '#DC2626', iconBg: 'bg-red-100', iconColor: '#DC2626' },
       { icon: Archive, label: 'Archived', value: stats?.archivedCount?.toString() ?? '0', sub: 'Hidden from active inventory', accent: '#6B7280', iconBg: 'bg-slate-100', iconColor: '#475569' },
-      { icon: DollarSign, label: 'Current Value', value: stats ? `${PESO_SYMBOL}${Number(stats.value || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : `${PESO_SYMBOL}0.00`, sub: 'Current inventory value', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669' },
-      { icon: TrendingUp, label: 'Reorder Value', value: stats ? `${PESO_SYMBOL}${Number(stats.reorderValue || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : `${PESO_SYMBOL}0.00`, sub: 'Value at reorder level', accent: '#7C3AED', iconBg: 'bg-purple-100', iconColor: '#7C3AED' },
+      { icon: DollarSign, label: 'Total Batch Cost', value: stats ? `${PESO_SYMBOL}${Number(stats.value || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : `${PESO_SYMBOL}0.00`, sub: 'Current inventory batch cost', accent: '#059669', iconBg: 'bg-emerald-100', iconColor: '#059669' },
     ],
     [stats]
   );
@@ -944,13 +951,14 @@ export default function Inventory() {
     },
   });
 
-  const buildStockDetails = ({ itemName, category, unit, initialStock, minimumStock, costPerUnit, expirationDate }) => {
+  const buildStockDetails = ({ itemName, category, unit, initialStock, minimumStock, totalBatchCost, batchQuantity, expirationDate }) => {
+    const costPerUnit = batchQuantity && totalBatchCost ? (Number(totalBatchCost) / Number(batchQuantity)).toFixed(2) : 0;
     const details = [
       { label: 'Item', value: itemName },
       { label: 'Category', value: category },
       { label: 'Stock', value: `${formatInventoryQuantity(initialStock)} ${unit}`.trim() },
       { label: 'Minimum', value: `${formatInventoryQuantity(minimumStock)} ${unit}`.trim() },
-      { label: 'Cost', value: `PHP ${Number(costPerUnit).toFixed(2)} / ${unit}` },
+      { label: 'Cost', value: `PHP ${costPerUnit} / ${unit}` },
     ];
 
     if (expirationDate) {
@@ -970,6 +978,8 @@ export default function Inventory() {
       unit: item.unit || 'pcs',
       lowStockThreshold: item.threshold,
       costPrice: item.costPrice,
+      totalBatchCost: overrides.totalBatchCost ?? item.totalBatchCost ?? 0,
+      batchQuantity: item.batchQuantity ?? 0,
       status: item.recordStatus || (item.isArchived ? 'deleted' : 'active'),
       expirationDate: overrides.expirationDate ?? item.expirationDate ?? null,
       stockBatches: overrides.stockBatches ?? item.stockBatches ?? [],
@@ -983,6 +993,7 @@ export default function Inventory() {
     setStockAdjustDraft(null);
     setStockAdjustQuantity('1');
     setStockAdjustExpirationDate('');
+    setStockAdjustBatchCost('');
   };
 
   const closeDrawer = () => {
@@ -990,13 +1001,13 @@ export default function Inventory() {
     setDrawerMode('add');
     setFormError('');
     setConfirmationAction(null);
-    setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '', expirationDate: '', conversions: [] });
+    setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', totalBatchCost: '', batchQuantity: '', minimumStock: '', initialStock: '', expirationDate: '' });
     clearDuplicatePrompt();
   };
 
   const handleAddClick = () => {
     setDrawerMode('add');
-      setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', costPerUnit: '', minimumStock: '', initialStock: '', expirationDate: '', conversions: [] });
+      setNewItem({ itemName: '', sku: '', category: 'Beans', unit: 'pcs', totalBatchCost: '', batchQuantity: '', minimumStock: '', initialStock: '', expirationDate: '' });
     setFormError('');
     setIsDrawerOpen(true);
   };
@@ -1008,11 +1019,11 @@ export default function Inventory() {
       sku: item.sku,
       itemName: item.name,
       category: item.cat,
-      unit: item.stock.split(' ')[1] || 'pcs',
-      costPerUnit: item.costPrice.toString(),
+      unit: item.unit || item.stock.split(' ')[1] || 'pcs',
+      totalBatchCost: item.totalBatchCost ? item.totalBatchCost.toString() : '',
+      batchQuantity: item.batchQuantity ? item.batchQuantity.toString() : '',
       minimumStock: item.threshold.toString(),
       expirationDate: item.expirationDate || '',
-      conversions: item.conversions || [],
     });
     setFormError('');
     setIsDrawerOpen(true);
@@ -1132,18 +1143,18 @@ export default function Inventory() {
     setPendingCreateInput(null);
   }
 
-  const submitCreateItem = async ({ token, itemName, category, unit, initialStock, minimumStock, costPerUnit, expirationDate, conversions = [] }) => {
+  const submitCreateItem = async ({ token, itemName, category, unit, initialStock, minimumStock, totalBatchCost, batchQuantity, expirationDate }) => {
     const result = await createInventoryItem(token, {
       name: itemName,
       category: categoryToBackend[category] || 'other',
       unit,
       quantity: initialStock,
       lowStockThreshold: minimumStock,
-      costPrice: costPerUnit,
+      totalBatchCost: totalBatchCost,
+      batchQuantity: batchQuantity,
       supplier: '',
       expirationDate: expirationDate || null,
-      conversions,
-    });
+    }); 
 
     if (result?.data) {
       const nextItem = mapItemToUi(result.data);
@@ -1168,6 +1179,7 @@ export default function Inventory() {
     });
     setStockAdjustQuantity('1');
     setStockAdjustExpirationDate('');
+    setStockAdjustBatchCost('');
   };
 
   const submitQuickStockAdjust = async () => {
@@ -1211,7 +1223,10 @@ export default function Inventory() {
       const result = await adjustInventoryStock(session.token, item.id, {
         adjustment: signedAdjustment,
         reason,
-        ...(signedAdjustment > 0 ? { expirationDate: stockAdjustExpirationDate || null } : {}),
+        ...(signedAdjustment > 0 ? {
+          expirationDate: stockAdjustExpirationDate || null,
+          batchCost: stockAdjustBatchCost ? parseFloat(stockAdjustBatchCost) : null
+        } : {}),
       });
       const nextQuantity = Number(result?.data?.newQuantity ?? item.quantity + signedAdjustment);
 
@@ -1221,6 +1236,7 @@ export default function Inventory() {
             ? buildAdjustedItem(currentItem, nextQuantity, {
                 expirationDate: result?.data?.expirationDate ?? currentItem.expirationDate ?? null,
                 stockBatches: result?.data?.stockBatches ?? currentItem.stockBatches ?? [],
+                totalBatchCost: result?.data?.totalBatchCost ?? currentItem.totalBatchCost ?? 0,
               })
             : currentItem
         )
@@ -1319,9 +1335,13 @@ export default function Inventory() {
 
     const itemName = newItem.itemName.trim();
     const unit = newItem.unit;
-    const costPerUnit = parseFloat(newItem.costPerUnit);
+    const totalBatchCost = parseFloat(newItem.totalBatchCost);
+    const batchQuantity = parseFloat(newItem.batchQuantity);
+    const costPerUnit = (totalBatchCost && batchQuantity) ? totalBatchCost / batchQuantity : 0;
     const minimumStock = normalizeInventoryQuantity(newItem.minimumStock);
     const initialStock = normalizeInventoryQuantity(newItem.initialStock);
+
+    console.log('[DEBUG] Form Submission - itemName:', { raw: newItem.itemName, trimmed: itemName, newItem });
 
     if (!itemName) {
       toast.error('Item name is required.');
@@ -1335,16 +1355,24 @@ export default function Inventory() {
       toast.error('Item name cannot exceed 100 characters.');
       return;
     }
-    if (!newItem.costPerUnit || isNaN(costPerUnit)) {
-      toast.error('Cost per unit is required and must be a valid number.');
+    if (!newItem.totalBatchCost || isNaN(totalBatchCost)) {
+      toast.error('Total batch cost is required and must be a valid number.');
       return;
     }
-    if (costPerUnit < 0) {
-      toast.error('Cost per unit cannot be negative.');
+    if (totalBatchCost < 0) {
+      toast.error('Total batch cost cannot be negative.');
       return;
     }
-    if (costPerUnit > 999999) {
-      toast.error('Cost per unit is too high.');
+    if (totalBatchCost > 9999999) {
+      toast.error('Total batch cost is too high.');
+      return;
+    }
+    if (!newItem.batchQuantity || isNaN(batchQuantity)) {
+      toast.error('Batch quantity is required and must be a valid number.');
+      return;
+    }
+    if (batchQuantity <= 0) {
+      toast.error('Batch quantity must be greater than 0.');
       return;
     }
     if (!newItem.minimumStock || Number.isNaN(minimumStock)) {
@@ -1399,7 +1427,6 @@ export default function Inventory() {
             minimumStock,
             costPerUnit,
             expirationDate: newItem.expirationDate,
-            conversions: newItem.conversions,
           });
         setShowDuplicateModal(true);
         return;
@@ -1427,9 +1454,9 @@ export default function Inventory() {
           unit,
           initialStock,
           minimumStock,
-          costPerUnit,
+          totalBatchCost,
+          batchQuantity,
           expirationDate: newItem.expirationDate,
-          conversions: newItem.conversions,
         },
       });
       return;
@@ -1452,12 +1479,12 @@ export default function Inventory() {
       }),
       payload: {
         id: newItem.id,
-        itemName,
+        name: itemName,
         category: newItem.category,
         unit,
-        minimumStock,
-        costPerUnit,
-        conversions: newItem.conversions,
+        lowStockThreshold: minimumStock,
+        totalBatchCost,
+        batchQuantity,
       },
     });
   };
@@ -1490,7 +1517,6 @@ export default function Inventory() {
           unit: action.payload.unit,
           lowStockThreshold: action.payload.minimumStock,
           costPrice: action.payload.costPerUnit,
-          conversions: action.payload.conversions,
         });
 
         if (result?.data) {
@@ -1924,8 +1950,6 @@ export default function Inventory() {
         onSubmit={handleSubmit}
         inputCls={inputCls}
         btnBrown={btnBrown}
-        conversions={newItem.conversions || []}
-        setConversions={(convs) => setNewItem((prev) => ({ ...prev, conversions: convs }))}
       />
 
       <ActionConfirmModal
@@ -1949,9 +1973,11 @@ export default function Inventory() {
         mode={stockAdjustDraft?.mode || 'increase'}
         quantity={stockAdjustQuantity}
         expirationDate={stockAdjustExpirationDate}
+        batchCost={stockAdjustBatchCost}
         isBusy={isSubmittingStockAdjust}
         onQuantityChange={setStockAdjustQuantity}
         onExpirationDateChange={setStockAdjustExpirationDate}
+        onBatchCostChange={setStockAdjustBatchCost}
         onCancel={closeStockAdjustModal}
         onConfirm={submitQuickStockAdjust}
       />

@@ -1,6 +1,5 @@
 import { X } from 'lucide-react';
 import Dropdown from '../Dropdown';
-import UnitConversionManager from './UnitConversionManager';
 
 const DEFAULT_UNIT_OPTIONS = ['pcs', 'ml', 'grams', 'liters'];
 
@@ -207,8 +206,6 @@ export default function ItemDrawer({
   onSubmit,
   inputCls,
   btnBrown,
-  conversions = [],
-  setConversions = () => {},
 }) {
   const categoryGuide = CATEGORY_UNIT_GUIDES[item.category] || CATEGORY_UNIT_GUIDES.Other;
   const unitOptions = categoryGuide.unitOptions || DEFAULT_UNIT_OPTIONS;
@@ -221,15 +218,17 @@ export default function ItemDrawer({
   const fields = isEditMode
     ? [
         { label: 'Stock Name', field: 'itemName', type: 'text', placeholder: 'e.g. Arabica Beans' },
-        { label: 'Cost per Unit', field: 'costPerUnit', type: 'number', placeholder: 'e.g. 12.50' },
+        { label: 'Total Batch Cost', field: 'totalBatchCost', type: 'number', placeholder: 'e.g. 500' },
+        { label: 'Batch Quantity', field: 'batchQuantity', type: 'number', placeholder: 'e.g. 10' },
         { label: 'Minimum Stock', field: 'minimumStock', type: 'number', placeholder: 'e.g. 50' },
       ]
     : [
         { label: 'Stock Name', field: 'itemName', type: 'text', placeholder: 'e.g. Arabica Beans' },
         { label: 'Stock Level', field: 'initialStock', type: 'number', placeholder: 'e.g. 120' },
-        { label: 'Cost per Unit', field: 'costPerUnit', type: 'number', placeholder: 'e.g. 12.50' },
+        { label: 'Total Batch Cost', field: 'totalBatchCost', type: 'number', placeholder: 'e.g. 500' },
+        { label: 'Batch Quantity', field: 'batchQuantity', type: 'number', placeholder: 'e.g. 10' },
         { label: 'Minimum Stock', field: 'minimumStock', type: 'number', placeholder: 'e.g. 50' },
-        { label: 'Expiration Date', field: 'expirationDate', type: 'date', placeholder: '' },
+        ...(item.category !== 'Equipment' ? [{ label: 'Expiration Date', field: 'expirationDate', type: 'date', placeholder: '' }] : []),
       ];
 
   return (
@@ -268,19 +267,22 @@ export default function ItemDrawer({
                 <input
                   type={type}
                   min={type === 'number' ? 0 : undefined}
-                  step={field === 'costPerUnit' ? '0.01' : supportsFractionalUnit ? '0.001' : '1'}
+                  step={field === 'totalBatchCost' ? '0.01' : supportsFractionalUnit ? '0.001' : '1'}
                   maxLength={field === 'itemName' ? 100 : undefined}
                   pattern={field === 'itemName' ? '.{1,}' : undefined}
                   value={item[field]}
                   onChange={(e) => {
                     let value = e.target.value;
+                    if (field === 'itemName') {
+                      console.log('[DEBUG] ItemDrawer onChange - itemName input:', value);
+                    }
 
                     if (type === 'number') {
                       // Allow only numbers and decimal point
                       value = value.replace(/[^0-9.]/g, '');
 
-                      // For cost, allow up to 2 decimals
-                      if (field === 'costPerUnit') {
+                      // For cost fields (totalBatchCost, batchQuantity), allow up to 2 decimals
+                      if (field === 'totalBatchCost' || field === 'batchQuantity') {
                         const parts = value.split('.');
                         if (parts.length > 2) {
                           value = parts[0] + '.' + parts[1];
@@ -306,7 +308,7 @@ export default function ItemDrawer({
                   placeholder={placeholder}
                   required={field !== 'expirationDate'}
                 />
-                {type === 'number' && field !== 'costPerUnit' && (
+                {type === 'number' && !['totalBatchCost', 'batchQuantity'].includes(field) && (
                   <p className="mt-1 text-[10px] text-[#9E8A7A]">
                     {supportsFractionalUnit
                       ? 'Decimal values are allowed for this unit.'
@@ -378,18 +380,8 @@ export default function ItemDrawer({
                   })}
                 </div>
 
-                <p className={`mt-3 text-[10px] leading-5 ${categoryGuide.tone.subtext}`}>
-                  Best practice: create the item using one clear stock unit. Add conversions below to track equivalent amounts.
-                </p>
               </div>
             )}
-
-            <UnitConversionManager 
-              itemCategory={item.category}
-              conversions={conversions}
-              onConversionsChange={setConversions}
-              isEditMode={isEditMode}
-            />
 
           </div>
 

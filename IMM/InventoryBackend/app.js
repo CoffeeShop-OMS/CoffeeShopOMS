@@ -103,18 +103,35 @@ app.use((err, req, res, next) => {
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
 
-const PORT = process.env.APP_PORT || process.env.PORT || 4000;
+const PORT = parseInt(process.env.APP_PORT || process.env.PORT, 10) || 4000;
 if (require.main === module) {
   const http = require("http");
   const server = http.createServer(app);
-  
+
   // Initialize WebSocket
   initializeWebSocket(server);
 
-  server.listen(PORT, () => {
-    console.log(`IMM Backend running on port ${PORT} [${process.env.NODE_ENV || "development"}]`);  
-    console.log(`WebSocket server ready for real-time updates`);
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(
+        `ERROR: Port ${PORT} is already in use. ` +
+        `Please stop the process using this port or set APP_PORT / PORT to a free port.`
+      );
+      process.exit(1);
+    }
+
+    console.error("Server error:", err);
+    process.exit(1);
   });
+
+  server.on("listening", () => {
+    const address = server.address();
+    const bind = typeof address === "string" ? address : `port ${address.port}`;
+    console.log(`IMM Backend running on ${bind} [${process.env.NODE_ENV || "development"}]`);
+    console.log("WebSocket server ready for real-time updates");
+  });
+
+  server.listen(PORT);
 }
 
 module.exports = app;

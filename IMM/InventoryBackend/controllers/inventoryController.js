@@ -38,8 +38,28 @@ const sanitizeSku = (value = "") => {
   return `${normalizeSkuPrefix(match[1])}-${match[2]}`;
 };
 
-const generateSku = (name = "Item", suffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0')) => {
+const generateSkuWithPrefix = async (name = "Item") => {
   const prefix = normalizeSkuPrefix(name);
+  
+  // Query all existing SKUs with this prefix to find the highest number
+  const snapshot = await db.collection(COLLECTION)
+    .where("sku", ">=", `${prefix}-000`)
+    .where("sku", "<=", `${prefix}-999`)
+    .orderBy("sku", "desc")
+    .limit(1)
+    .get();
+
+  let nextNumber = 1;
+  if (!snapshot.empty) {
+    const lastSku = snapshot.docs[0].data().sku;
+    const match = lastSku.match(/-(\d{3})$/);
+    if (match) {
+      nextNumber = parseInt(match[1], 10) + 1;
+      if (nextNumber > 999) nextNumber = 1; // Wrap around if needed
+    }
+  }
+
+  const suffix = nextNumber.toString().padStart(3, '0');
   return `${prefix}-${suffix}`;
 };
 
@@ -103,12 +123,12 @@ const logActivity = async (action, itemId, itemName, userId, details = {}) => {
  */
 const createItem = async (req, res) => {
   try {
-    const { name, sku, category, quantity, unit, lowStockThreshold = 10, costPrice, supplier, expirationDate, conversions = [] } = req.body;
+    const { name, sku, category, quantity, unit, lowStockThreshold = 10, totalBatchCost, batchQuantity, supplier, expirationDate, conversions = [] } = req.body;
 
     const quantityValue = normalizeQuantityValue(quantity);
     const thresholdValue = normalizeQuantityValue(lowStockThreshold);
     const cleanName = String(name).trim();
-    const cleanCategory = categoryToBackend[category] || category.toLowerCase(); // Convert UI category to backend format
+    const cleanCategory = categoryToBackend[category] || category.toLowerCase();
     const cleanUnit = String(unit).trim();
     const cleanSupplier = supplier ? String(supplier).trim() : null;
     const cleanExpirationDate = normalizeDateValue(expirationDate);
@@ -127,29 +147,18 @@ const createItem = async (req, res) => {
       receivedAt: new Date().toISOString(),
     });
 
-    let finalSku = sanitizeSku(sku) || generateSku(cleanName);
+    let finalSku = sanitizeSku(sku) || await generateSkuWithPrefix(cleanName);
 
-    // Ensure SKU uniqueness when auto-generating or when a custom SKU collides.
-    let attempts = 0;
-    while (attempts < 5) {
+    // Validate custom SKU uniqueness only (auto-generated SKUs are sequential and unique)
+    if (sku) {
       const skuCheck = await db.collection(COLLECTION).where("sku", "==", finalSku).limit(1).get();
-      if (skuCheck.empty) break;
-
-      if (sku) {
+      if (!skuCheck.empty) {
         return res.status(409).json({ success: false, message: `SKU '${finalSku}' already exists` });
       }
-
-      attempts += 1;
-      const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-      finalSku = generateSku(cleanName, randomSuffix);
     }
 
-    if (attempts >= 5) {
-      return res.status(500).json({
-        success: false,
-        message: "Unable to generate a unique SKU. Please try again.",
-      });
-    }
+    // Calculate cost per unit: totalBatchCost / batchQuantity
+    const costPerUnit = (totalBatchCost && batchQuantity) ? parseFloat(totalBatchCost) / parseFloat(batchQuantity) : null;
 
     const newItem = {
       name: cleanName,
@@ -158,7 +167,9 @@ const createItem = async (req, res) => {
       quantity: batchSnapshot.quantity,
       unit: cleanUnit,
       lowStockThreshold: thresholdValue,
-      costPrice: costPrice ? parseFloat(costPrice) : null,
+      totalBatchCost: totalBatchCost ? parseFloat(totalBatchCost) : null,
+      batchQuantity: batchQuantity ? parseFloat(batchQuantity) : null,
+      costPrice: costPerUnit,
       supplier: cleanSupplier,
       expirationDate: batchSnapshot.expirationDate,
       stockBatches: batchSnapshot.stockBatches,
@@ -292,16 +303,23 @@ const updateItem = async (req, res) => {
     }
 
     const current = doc.data();
-    const { name, category, quantity, unit, lowStockThreshold, costPrice, supplier, expirationDate, conversions } = req.body;
+    const { name, category, quantity, unit, lowStockThreshold, totalBatchCost, batchQuantity, supplier, expirationDate, conversions } = req.body;
     const nextUnit = unit !== undefined ? String(unit).trim() : current.unit;
 
     const updates = { updatedBy: req.user.uid, updatedAt: FieldValue.serverTimestamp() };
 
     if (name !== undefined) updates.name = name;
-    if (category !== undefined) updates.category = categoryToBackend[category] || category.toLowerCase(); // Convert UI category to backend format
+    if (category !== undefined) updates.category = categoryToBackend[category] || category.toLowerCase();
     if (unit !== undefined) updates.unit = nextUnit;
     if (supplier !== undefined) updates.supplier = supplier;
-    if (costPrice !== undefined) updates.costPrice = parseFloat(costPrice);
+    if (totalBatchCost !== undefined) updates.totalBatchCost = parseFloat(totalBatchCost);
+    if (batchQuantity !== undefined) updates.batchQuantity = parseFloat(batchQuantity);
+    if (totalBatchCost !== undefined || batchQuantity !== undefined) {
+      const finalTotalBatchCost = totalBatchCost !== undefined ? parseFloat(totalBatchCost) : current.totalBatchCost;
+      const finalBatchQuantity = batchQuantity !== undefined ? parseFloat(batchQuantity) : current.batchQuantity;
+      const costPerUnit = (finalTotalBatchCost && finalBatchQuantity) ? finalTotalBatchCost / finalBatchQuantity : null;
+      updates.costPrice = costPerUnit;
+    }
     if (conversions !== undefined) updates.conversions = Array.isArray(conversions) ? conversions : [];
 
     const newQty = quantity !== undefined ? normalizeQuantityValue(quantity) : Number(current.quantity ?? 0);
@@ -428,9 +446,10 @@ const deleteItem = async (req, res) => {
  */
 const adjustStock = async (req, res) => {
   try {
-    const { adjustment, reason, expirationDate } = req.body;
+    const { adjustment, reason, expirationDate, batchCost } = req.body;
     const adjustmentValue = normalizeQuantityValue(adjustment);
     const normalizedExpirationDate = normalizeDateValue(expirationDate);
+    const parsedBatchCost = batchCost !== undefined && batchCost !== null ? parseFloat(batchCost) : null;
     const docRef = db.collection(COLLECTION).doc(req.params.id);
 
     const result = await db.runTransaction(async (transaction) => {
@@ -447,13 +466,17 @@ const adjustStock = async (req, res) => {
       }
       const batchSnapshot =
         adjustmentValue >= 0
-          ? addStockBatch(current, adjustmentValue, normalizedExpirationDate, new Date().toISOString())
+          ? addStockBatch(current, adjustmentValue, normalizedExpirationDate, new Date().toISOString(), parsedBatchCost)
           : consumeStockBatches(current, Math.abs(adjustmentValue));
+
+      // Calculate total batch cost as sum of all batch costs
+      const newTotalBatchCost = batchSnapshot.stockBatches.reduce((sum, batch) => sum + Number(batch.cost || 0), 0);
 
       transaction.update(docRef, {
         quantity: batchSnapshot.quantity,
         expirationDate: batchSnapshot.expirationDate,
         stockBatches: batchSnapshot.stockBatches,
+        totalBatchCost: newTotalBatchCost,
         isLowStock: batchSnapshot.isLowStock,
         updatedBy: req.user.uid,
         updatedAt: FieldValue.serverTimestamp(),
@@ -464,6 +487,7 @@ const adjustStock = async (req, res) => {
         isLowStock: batchSnapshot.isLowStock,
         expirationDate: batchSnapshot.expirationDate,
         stockBatches: batchSnapshot.stockBatches,
+        totalBatchCost: newTotalBatchCost,
         addedBatch: batchSnapshot.addedBatch || null,
         consumedBatches: batchSnapshot.consumedBatches || [],
         itemName: current.name,

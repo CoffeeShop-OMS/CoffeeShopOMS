@@ -30,9 +30,11 @@ export default function StockAdjustModal({
   mode = 'increase',
   quantity = '',
   expirationDate = '',
+  batchCost = '',
   isBusy = false,
   onQuantityChange,
   onExpirationDateChange,
+  onBatchCostChange,
   onCancel,
   onConfirm,
 }) {
@@ -103,44 +105,17 @@ export default function StockAdjustModal({
                     <div className="min-w-0 flex-1">
                       {mode === 'increase' ? (
                         <>
-                          <p className="text-sm font-semibold text-rose-900">Expired stock still on hand</p>
+                          <p className="text-sm font-semibold text-rose-900">Expired stock alert</p>
                           <p className="mt-1 text-xs leading-5 text-rose-700">
-                            This item still has <span className="font-semibold">{stockPreview.expiredQuantity} {unitLabel}</span> in expired batches.
-                            Adding new stock creates a separate batch, so the expired alert will stay until the expired quantity is removed.
+                            This item has <span className="font-semibold">{stockPreview.expiredQuantity} {unitLabel}</span> expired. New stock will be added as a separate batch.
                           </p>
-
-                          <div className="mt-3 grid grid-cols-2 gap-2">
-                            <PreviewPill label="Expired now" value={`${stockPreview.expiredQuantity} ${unitLabel}`} tone="rose" />
-                            <PreviewPill label="Usable now" value={`${stockPreview.nonExpiredQuantity} ${unitLabel}`} tone="slate" />
-                            {showAddPreview && (
-                              <PreviewPill label="Adding" value={`+${stockPreview.addedQuantity} ${unitLabel}`} tone="emerald" />
-                            )}
-                            {showAddPreview && (
-                              <PreviewPill label="Total after save" value={`${stockPreview.totalQuantityAfterAdd} ${unitLabel}`} tone="amber" />
-                            )}
-                          </div>
-
-                          {showAddPreview && (
-                            <p className="mt-3 text-[11px] leading-5 text-rose-700">
-                              {stockPreview.addedIsExpired
-                                ? `The selected batch is already expired, so expired stock will become ${stockPreview.expiredQuantityAfterAdd} ${unitLabel} after saving.`
-                                : `After saving, the expired tab will still show ${stockPreview.expiredQuantityAfterAdd} ${unitLabel} expired, while ${stockPreview.nonExpiredQuantityAfterAdd} ${unitLabel} will remain usable.`}
-                            </p>
-                          )}
                         </>
                       ) : (
                         <>
-                          <p className="text-sm font-semibold text-rose-900">Expired items will be removed first</p>
+                          <p className="text-sm font-semibold text-rose-900">Expired items removed first</p>
                           <p className="mt-1 text-xs leading-5 text-rose-700">
-                            This item has <span className="font-semibold">{stockPreview.expiredQuantity} {unitLabel}</span> in expired batches.
-                            When you deduct stock, expired items will be consumed first (automatically removed), then good stock.
-                            This helps prevent waste.
+                            This item has <span className="font-semibold">{stockPreview.expiredQuantity} {unitLabel}</span> expired. Deduction will remove expired stock first, then good stock.
                           </p>
-
-                          <div className="mt-3 grid grid-cols-2 gap-2">
-                            <PreviewPill label="Expired" value={`${stockPreview.expiredQuantity} ${unitLabel}`} tone="rose" />
-                            <PreviewPill label="Good stock" value={`${stockPreview.nonExpiredQuantity} ${unitLabel}`} tone="emerald" />
-                          </div>
                         </>
                       )}
                     </div>
@@ -174,7 +149,7 @@ export default function StockAdjustModal({
                 </p>
               </div>
 
-              {mode === 'increase' && (
+              {mode === 'increase' && item?.cat !== 'Equipment' && (
                 <div className="mt-5">
                   <label htmlFor="stock-adjust-expiration" className="block text-xs font-bold uppercase tracking-widest text-[#A89080] mb-2">
                     Batch Expiration Date
@@ -188,6 +163,27 @@ export default function StockAdjustModal({
                   />
                   <p className="mt-2 text-xs text-[#8A7666]">
                     Optional for non-expiring items. If you set this, the new stock will be saved as its own batch so expiry tracking stays clear.
+                  </p>
+                </div>
+              )}
+
+              {mode === 'increase' && (
+                <div className="mt-5">
+                  <label htmlFor="stock-adjust-batch-cost" className="block text-xs font-bold uppercase tracking-widest text-[#A89080] mb-2">
+                    Total Batch Cost
+                  </label>
+                  <input
+                    id="stock-adjust-batch-cost"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={batchCost}
+                    onChange={(event) => onBatchCostChange?.(event.target.value)}
+                    className="w-full border border-[#E2DDD8] rounded-xl px-3.5 py-2.5 text-sm text-[#2C1810] bg-white transition focus:outline-none focus:border-[#6B3E26] focus:ring-2 focus:ring-[#6B3E26]/10 placeholder:text-[#C4B8B0]"
+                    placeholder="Enter batch cost (₱)"
+                  />
+                  <p className="mt-2 text-xs text-[#8A7666]">
+                    Optional. Cost of this specific batch. If not set, will use the item's default cost calculation.
                   </p>
                 </div>
               )}

@@ -69,7 +69,7 @@ export default function InventoryTable({
             <th className="w-12 text-center px-4 py-3">
               <input type="checkbox" checked={allSelected} onChange={handleSelectAll} className="accent-[#3D261D] rounded" />
             </th>
-            {['Item', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Current Value', 'Reorder Value', 'Date Added', 'Last Activity', 'Status', 'Actions'].map((h) => (
+            {['Item', 'SKU', 'Category', 'Stock', 'Reorder Level', 'Total Batch Cost', 'Total Batches', 'Date Added', 'Last Activity', 'Status', 'Actions'].map((h) => (
               <th key={h} className="px-4 py-3 text-left text-[10px] font-bold text-[#A89080] uppercase tracking-widest whitespace-nowrap">{h}</th>
             ))}
           </tr>
@@ -151,8 +151,8 @@ export default function InventoryTable({
                       {expandedItems.has(item.id) && item.conversions && item.conversions.length > 0 && (
                         <div className="bg-[#FAF8F5] rounded p-2 mt-1 space-y-1">
                           {getAlternativeStockLevels(
-                            parseFloat(item.stock.split(' ')[0]),
-                            item.stock.split(' ')[1],
+                            Number.isFinite(item.quantity) ? item.quantity : 0,
+                            item.unit || item.stock.split(' ')[1],
                             item.conversions
                           ).map((alt, idx) => (
                             <p key={idx} className="text-[10px] text-[#7A6355]">
@@ -165,11 +165,9 @@ export default function InventoryTable({
                   </td>
                   <td className="px-4 py-3.5 text-sm font-medium text-[#7A6355] whitespace-nowrap">{item.reorder}</td>
                   <td className="px-4 py-3.5">
-                    <span className="text-sm font-semibold text-emerald-600">₱{item.currentValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
+                    <span className="text-sm font-semibold text-emerald-600">₱{item.totalBatchCost.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
                   </td>
-                  <td className="px-4 py-3.5">
-                    <span className="text-sm font-semibold text-[#3D261D]">₱{item.reorderValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
-                  </td>
+                  <td className="px-4 py-3.5 text-sm font-medium text-[#7A6355] text-center">{item.stockBatches?.length || 0}</td>
                   <td className="px-4 py-3.5 text-sm text-[#7A6355] whitespace-nowrap">{item.dateAdded}</td>
                   <td className="px-4 py-3.5 text-sm text-[#7A6355] whitespace-nowrap">{item.lastActivity}</td>
                   <td className="px-4 py-3.5">

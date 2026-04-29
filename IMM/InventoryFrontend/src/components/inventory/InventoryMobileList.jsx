@@ -108,8 +108,8 @@ export default function InventoryMobileList({
                   {expandedItems.has(item.id) && item.conversions && item.conversions.length > 0 && (
                     <div className="bg-[#FAF8F5] rounded p-2 space-y-1">
                       {getAlternativeStockLevels(
-                        parseFloat(item.stock.split(' ')[0]),
-                        item.stock.split(' ')[1],
+                        Number.isFinite(item.quantity) ? item.quantity : 0,
+                        item.unit || item.stock.split(' ')[1],
                         item.conversions
                       ).map((alt, idx) => (
                         <p key={idx} className="text-[10px] text-[#7A6355]">
@@ -159,12 +159,12 @@ export default function InventoryMobileList({
                   <p className="text-xs font-semibold text-[#7A6355]">{item.reorder}</p>
                 </div>
                 <div className="bg-[#FAF8F5] rounded-xl px-3 py-2">
-                  <p className="text-[9px] text-[#A89080] uppercase tracking-wider font-bold mb-0.5">Curr. Value</p>
-                  <p className="text-xs font-semibold text-emerald-600">₱{item.currentValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</p>
+                  <p className="text-[9px] text-[#A89080] uppercase tracking-wider font-bold mb-0.5">Total Batch Cost</p>
+                  <p className="text-xs font-semibold text-emerald-600">₱{item.totalBatchCost.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</p>
                 </div>
                 <div className="bg-[#FAF8F5] rounded-xl px-3 py-2">
-                  <p className="text-[9px] text-[#A89080] uppercase tracking-wider font-bold mb-0.5">Reorder Value</p>
-                  <p className="text-xs font-semibold text-[#3D261D]">₱{item.reorderValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</p>
+                  <p className="text-[9px] text-[#A89080] uppercase tracking-wider font-bold mb-0.5">Total Batches</p>
+                  <p className="text-xs font-semibold text-[#3D261D] text-center">{item.stockBatches?.length || 0}</p>
                 </div>
               </div>
 

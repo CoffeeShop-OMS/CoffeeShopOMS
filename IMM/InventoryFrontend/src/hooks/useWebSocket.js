@@ -5,10 +5,16 @@ const rawSocketUrl =
   import.meta.env.VITE_WS_URL ||
   import.meta.env.VITE_BACKEND_BASE_URL ||
   import.meta.env.VITE_API_BASE_URL ||
-  import.meta.env.VITE_API_URL ||
-  "http://localhost:4000";
+  import.meta.env.VITE_API_URL;
 
-const socketUrl = rawSocketUrl.replace(/\/api\/?$/, "").replace(/\/$/, "") || "http://localhost:4000";
+// Clean up the socket URL by removing /api suffix and trailing slashes
+let socketUrl = rawSocketUrl?.replace(/\/api\/?$/, "").replace(/\/$/, "") || "";
+
+// Only default to localhost in development mode
+if (!socketUrl && import.meta.env.DEV) {
+  socketUrl = "http://localhost:4000";
+}
+// In production, leave socketUrl empty to connect to current domain
 
 let sharedSocket = null;
 let activeSubscribers = 0;

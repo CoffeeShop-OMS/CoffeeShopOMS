@@ -159,6 +159,10 @@ const adjustStockValidator = [
     .optional({ values: "falsy" })
     .isISO8601()
     .withMessage("Expiration date must be a valid date"),
+  body("batchCost")
+    .optional({ values: "falsy" })
+    .isFloat({ min: 0 })
+    .withMessage("Batch cost must be a positive number"),
   body("reason")
     .trim()
     .notEmpty()

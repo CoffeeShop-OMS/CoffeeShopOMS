@@ -7,23 +7,42 @@ import { convertQuantity, formatConversion, calculateCostPerUnit } from './unitC
 
 /**
  * Get alternative stock levels for an item based on conversions
+ * Handles conversions in both directions (fromUnit->toUnit and reverse)
  */
 export const getAlternativeStockLevels = (quantity, unit, conversions = []) => {
   if (!conversions || conversions.length === 0) {
     return [];
   }
 
-  return conversions
-    .filter((conv) => conv.fromUnit === unit)
-    .map((conv) => ({
-      quantity: quantity * conv.ratio,
-      unit: conv.toUnit,
-      conversion: conv,
-    }));
+  const alternatives = [];
+
+  conversions.forEach((conv) => {
+    // Direct conversion: fromUnit matches item unit
+    if (conv.fromUnit === unit && conv.toUnit && conv.ratio) {
+      alternatives.push({
+        quantity: quantity * conv.ratio,
+        unit: conv.toUnit,
+        conversion: conv,
+        reversed: false,
+      });
+    }
+    // Reverse conversion: toUnit matches item unit
+    else if (conv.toUnit === unit && conv.fromUnit && conv.ratio && conv.ratio !== 0) {
+      alternatives.push({
+        quantity: quantity / conv.ratio,
+        unit: conv.fromUnit,
+        conversion: conv,
+        reversed: true,
+      });
+    }
+  });
+
+  return alternatives;
 };
 
 /**
  * Format cost breakdown showing cost per different units
+ * Handles conversions in both directions
  */
 export const formatCostBreakdown = (totalCost, quantity, unit, conversions = []) => {
   const breakdown = [
@@ -34,13 +53,15 @@ export const formatCostBreakdown = (totalCost, quantity, unit, conversions = [])
     },
   ];
 
-  // Add costs for converted units
+  // Add costs for converted units (bidirectional)
   getAlternativeStockLevels(quantity, unit, conversions).forEach((alt) => {
-    breakdown.push({
-      unit: alt.unit,
-      quantity: alt.quantity,
-      costPerUnit: totalCost / alt.quantity,
-    });
+    if (alt.quantity > 0) {
+      breakdown.push({
+        unit: alt.unit,
+        quantity: alt.quantity,
+        costPerUnit: totalCost / alt.quantity,
+      });
+    }
   });
 
   return breakdown;
