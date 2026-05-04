@@ -104,6 +104,47 @@ const loadMonochromeLogo = async () => {
   }
 };
 
+const isIosBrowser = () => {
+  const userAgent = window.navigator?.userAgent || '';
+  const platform = window.navigator?.platform || '';
+  const maxTouchPoints = window.navigator?.maxTouchPoints || 0;
+
+  return /iPad|iPhone|iPod/.test(userAgent) || (platform === 'MacIntel' && maxTouchPoints > 1);
+};
+
+const downloadPdfBlob = (doc, fileName) => {
+  const blob = doc.output('blob');
+  const navigatorApi = window.navigator;
+
+  if (typeof navigatorApi?.msSaveOrOpenBlob === 'function') {
+    navigatorApi.msSaveOrOpenBlob(blob, fileName);
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  const supportsDownloadAttribute = 'download' in HTMLAnchorElement.prototype;
+
+  if (!supportsDownloadAttribute || isIosBrowser()) {
+    window.location.assign(objectUrl);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    return;
+  }
+
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = fileName;
+  link.rel = 'noopener';
+  link.style.display = 'none';
+
+  document.body.appendChild(link);
+  link.click();
+
+  window.setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  }, 60000);
+};
+
 const drawLogoFallback = (doc, x, y) => {
   doc.setDrawColor(0);
   doc.setLineWidth(1);
@@ -528,5 +569,5 @@ export const downloadReportsPdf = async ({
   }
 
   const fileDate = generatedAt.toISOString().slice(0, 10);
-  doc.save(`inventory-report-${fileDate}.pdf`);
+  downloadPdfBlob(doc, `inventory-report-${fileDate}.pdf`);
 };

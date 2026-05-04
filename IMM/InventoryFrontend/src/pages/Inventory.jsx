@@ -951,14 +951,14 @@ export default function Inventory() {
     },
   });
 
-  const buildStockDetails = ({ itemName, category, unit, initialStock, minimumStock, totalBatchCost, batchQuantity, expirationDate }) => {
-    const costPerUnit = batchQuantity && totalBatchCost ? (Number(totalBatchCost) / Number(batchQuantity)).toFixed(2) : 0;
+  const buildStockDetails = ({ itemName, category, unit, initialStock, minimumStock, totalBatchCost, batchQuantity, costPerUnit, expirationDate }) => {
+    const displayCostPerUnit = costPerUnit ?? (batchQuantity && totalBatchCost ? Number(totalBatchCost) / Number(batchQuantity) : 0);
     const details = [
       { label: 'Item', value: itemName },
       { label: 'Category', value: category },
       { label: 'Stock', value: `${formatInventoryQuantity(initialStock)} ${unit}`.trim() },
       { label: 'Minimum', value: `${formatInventoryQuantity(minimumStock)} ${unit}`.trim() },
-      { label: 'Cost', value: `PHP ${costPerUnit} / ${unit}` },
+      { label: 'Cost', value: `PHP ${Number(displayCostPerUnit || 0).toFixed(2)} / ${unit}` },
     ];
 
     if (expirationDate) {
@@ -1364,10 +1364,15 @@ export default function Inventory() {
     const itemName = newItem.itemName.trim();
     const unit = newItem.unit;
     const totalBatchCost = parseFloat(newItem.totalBatchCost);
-    const batchQuantity = parseFloat(newItem.batchQuantity);
-    const costPerUnit = (totalBatchCost && batchQuantity) ? totalBatchCost / batchQuantity : 0;
+    const rawBatchQuantity = parseFloat(newItem.batchQuantity);
     const minimumStock = normalizeInventoryQuantity(newItem.minimumStock);
     const initialStock = normalizeInventoryQuantity(newItem.initialStock);
+    const batchQuantity = drawerMode === 'add'
+      ? initialStock
+      : Number.isFinite(rawBatchQuantity) && rawBatchQuantity > 0
+        ? rawBatchQuantity
+        : undefined;
+    const costPerUnit = (totalBatchCost && batchQuantity) ? totalBatchCost / batchQuantity : 0;
 
     console.log('[DEBUG] Form Submission - itemName:', { raw: newItem.itemName, trimmed: itemName, newItem });
 
@@ -1393,14 +1398,6 @@ export default function Inventory() {
     }
     if (totalBatchCost > 9999999) {
       toast.error('Current batch cost is too high.');
-      return;
-    }
-    if (!newItem.batchQuantity || isNaN(batchQuantity)) {
-      toast.error('Batch quantity is required and must be a valid number.');
-      return;
-    }
-    if (batchQuantity <= 0) {
-      toast.error('Batch quantity must be greater than 0.');
       return;
     }
     if (!newItem.minimumStock || Number.isNaN(minimumStock)) {
@@ -1447,15 +1444,17 @@ export default function Inventory() {
 
       if (duplicateItem) {
         setDuplicateMatchItem(duplicateItem);
-          setPendingCreateInput({
-            itemName,
-            category: newItem.category,
-            unit,
-            initialStock,
-            minimumStock,
-            costPerUnit,
-            expirationDate: newItem.expirationDate,
-          });
+        setPendingCreateInput({
+          itemName,
+          category: newItem.category,
+          unit,
+          initialStock,
+          minimumStock,
+          totalBatchCost,
+          batchQuantity,
+          costPerUnit,
+          expirationDate: newItem.expirationDate,
+        });
         setShowDuplicateModal(true);
         return;
       }

@@ -210,7 +210,7 @@ export default function ItemDrawer({
   const categoryGuide = CATEGORY_UNIT_GUIDES[item.category] || CATEGORY_UNIT_GUIDES.Other;
   const unitOptions = categoryGuide.unitOptions || DEFAULT_UNIT_OPTIONS;
   const supportsFractionalUnit = String(item.unit || '').toLowerCase() !== 'pcs';
-  const title = isEditMode ? 'Update Item' : 'Add New Stock';
+  const title = isEditMode ? 'Update Stock' : 'Add New Stock';
   const subtitle = isEditMode
     ? 'Modify the details for this inventory stock. Manual stock or expiration edits will reset the saved batch history for this item.'
     : 'Fill in the details for the new inventory Stock.';
@@ -219,14 +219,12 @@ export default function ItemDrawer({
     ? [
         { label: 'Stock Name', field: 'itemName', type: 'text', placeholder: 'e.g. Arabica Beans' },
         { label: 'Current Batch Cost', field: 'totalBatchCost', type: 'number', placeholder: 'e.g. 500' },
-        { label: 'Batch Quantity', field: 'batchQuantity', type: 'number', placeholder: 'e.g. 10' },
         { label: 'Minimum Stock', field: 'minimumStock', type: 'number', placeholder: 'e.g. 50' },
       ]
     : [
         { label: 'Stock Name', field: 'itemName', type: 'text', placeholder: 'e.g. Arabica Beans' },
         { label: 'Stock Level', field: 'initialStock', type: 'number', placeholder: 'e.g. 120' },
         { label: 'Total Batch Cost', field: 'totalBatchCost', type: 'number', placeholder: 'e.g. 500' },
-        { label: 'Batch Quantity', field: 'batchQuantity', type: 'number', placeholder: 'e.g. 10' },
         { label: 'Minimum Stock', field: 'minimumStock', type: 'number', placeholder: 'e.g. 50' },
         ...(item.category !== 'Equipment' ? [{ label: 'Expiration Date', field: 'expirationDate', type: 'date', placeholder: '' }] : []),
       ];
